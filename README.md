@@ -242,14 +242,14 @@ confint(result, level = 0.90)
 ## Planned Features for `remoteoutcome`
 
 The current version (0.1.0) implements the core estimator proposed in 
-Rambachan, Singh and Viviano (2025) for binary outcomes without pre-treatment covariates 
+*Rambachan, Singh and Viviano (2025)* for binary outcomes without pre-treatment covariates 
 assuming there are no direct effects. 
 This corresponds to Algorithm 1 in Rambachan, Singh and Viviano (2025); see the
 paper for further details. 
-The following extensions are under active development: (1) incorporating
-pre-treatment covariates and discrete outcomes as discussed in Appendix E of Rambachan, Singh and Viviano (2025);
-(2) allowing for direct effects in the complete case (see the paper for further details); and 
-(3) allowing for continuous outcomes through discretization. 
+The following extensions are under active development: 
+1. Incorporating pre-treatment covariates and discrete outcomes as discussed in Appendix E of *Rambachan, Singh and Viviano (2025)*;
+2. Allowing for direct effects in the complete case (see the paper for further details); and 
+3. Allowing for continuous outcomes through discretization. 
 
 Contributions and feedback are welcome via [GitHub Issues](https://github.com/asheshrambachan/remoteoutcome/issues).
 

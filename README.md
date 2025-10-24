@@ -232,9 +232,9 @@ vignette("treatment-effects-original-predictions") # A vignette that uses the or
 
 ## Planned Features
 
-The current version (0.1.0) implements the core RSV estimator for binary outcomes without pre-treatment covariates (Algorithm 1 from the main text). We plan to extend the package with the following features. These extensions are under active development. Contributions and feedback are welcome via [GitHub Issues](https://github.com/asheshrambachan/remoteoutcome/issues).
+The current version (0.1.0) implements the core RSV estimator for binary outcomes without pre-treatment covariates (Algorithm 1 from the main text). These extensions are under active development. Contributions and feedback are welcome via [GitHub Issues](https://github.com/asheshrambachan/remoteoutcome/issues).
 
-### 1. Discrete Outcomes
+<!-- ### 1. Discrete Outcomes
 
 Extend the RSV estimator to handle discrete outcomes that take multiple values (not just binary 0/1). This will allow estimation of:
 - Categorical treatment effects (e.g., effect on education level: none, primary, secondary, tertiary)
@@ -271,7 +271,7 @@ Incorporate pre-treatment covariates to improve efficiency and allow for:
 - `rsv_estimate(..., X = covariates, subgroup = "gender")`: Subgroup analysis
 - Doubly-robust estimation with both outcome and propensity score models
 
-**Technical approach**: Extend Algorithm 1 to condition on pre-treatment covariates X in all conditional expectations, e.g., E[Y | R, X, S_o = 1], while maintaining the identifying stability assumption.
+**Technical approach**: Extend Algorithm 1 to condition on pre-treatment covariates X in all conditional expectations, e.g., E[Y | R, X, S_o = 1], while maintaining the identifying stability assumption. -->
 
 
 ## Citation

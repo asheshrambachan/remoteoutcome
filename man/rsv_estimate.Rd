@@ -33,13 +33,13 @@ rsv_estimate(
 
 \item{R}{Remotely sensed variable. Required if predictions are not provided.}
 
-\item{pred_Y}{(Optional) Predicted \eqn{E[Y \mid R, S_o = 1]}. If provided, other predictions must also be provided.}
+\item{pred_Y}{(Optional) Predicted \eqn{P[Y \mid R, S_o = 1]}, \eqn{\text{PRED}_Y(R)}. If provided, other predictions must also be provided.}
 
-\item{pred_D}{(Optional) Predicted \eqn{E[D \mid R, S_e = 1]}.}
+\item{pred_D}{(Optional) Predicted \eqn{P[D \mid R, S_e = 1]}, \eqn{\text{PRED}_D(R)}.}
 
-\item{pred_S_e}{(Optional) Predicted \eqn{P(S_e = 1 \mid R)}.}
+\item{pred_S_e}{(Optional) Predicted \eqn{P(S_e = 1 \mid R)}, \eqn{\text{PRED}_{S_e}(R)}.}
 
-\item{pred_S_o}{(Optional) Predicted \eqn{P(S_o = 1 \mid R)}.}
+\item{pred_S_o}{(Optional) Predicted \eqn{P(S_o = 1 \mid R)}, \eqn{\text{PRED}_{S_o}(R)}.}
 
 \item{theta_init}{Initial estimate of the treatment effect on the train data.}
 
@@ -100,25 +100,83 @@ prediction fitting.
 }
 \examples{
 \dontrun{
-# Example 1: User provides raw data with sample splitting
-result <- rsv_estimate(Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
-                       method = "split", se = TRUE)
+library(dplyr)
+library(remoteoutcome)
 
-# Example 2: User provides raw data with cross-fitting
-result <- rsv_estimate(Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
-                       method = "crossfit", nfolds = 5, se = TRUE)
+# Example data: data_real (included in package)
+Y <- data_real$Ycons # binary outcome
+D <- data_real$D # binary treatment
+R <- data_real \%>\% select(starts_with("luminosity"), starts_with("satellite")) # remotely sensed variable
+S_e <- !is.na(D) & (rowSums(is.na(R)) == 0) # experimental sample indicator (Observe D, R)
+S_o <- !is.na(Y) & (rowSums(is.na(R)) == 0) #  observational sample indicator (Observe Y, R)
+clusters <- data_real$clusters # Subdistrict-level cluster identifiers
 
-# Example 3: User provides raw data with custom ML parameters
-result <- rsv_estimate(Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
-                       method = "crossfit",
-                       ml_params = list(ntree = 1000, classwt_Y = c(5, 1)),
-                       se = TRUE)
+# Example 1: No sample splitting
+result <- rsv_estimate(
+Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
+method = "none",
+ml_params = list(seed = 42, cores = 7),
+se_params = list(fix_seed = TRUE, clusters = clusters, cores = 7)
+)
+print(result)
 
-# Example 4: User provides fitted predictions
-result <- rsv_estimate(Y = Y, D = D, S_e = S_e, S_o = S_o,
-                       pred_Y = pred_Y, pred_D = pred_D,
-                       pred_S_e = pred_S_e, pred_S_o = pred_S_o,
-                       se = TRUE)
+# Example 2: With sample splitting
+result <- rsv_estimate(
+Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
+method = "split",
+ml_params = list(train_ratio = 0.5, seed = 42, cores = 7),
+se_params = list(fix_seed = TRUE, clusters = clusters)
+)
+print(result)
+
+# Example 3: With cross fitting
+result <- rsv_estimate(
+Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
+method = "crossfit",
+ml_params = list(nfold = 5, seed = 42, cores = 7),
+se_params = list(fix_seed = TRUE, clusters = clusters)
+)
+print(result)
+
+# Example 4: Custom ML parameters
+result <- rsv_estimate(
+  Y = Y,
+  D = D,
+  S_e = S_e,
+  S_o = S_o,
+  R = R,
+  eps = 1e-2,
+  method = "none",
+  ml_params = list(       # Customize random forest parameters:
+    ntree = 100,          #   Number of trees
+    classwt_Y = c(10, 1), #   Class weights for PRED_Y model
+    seed = 42,            #   A random seed for each RF for reproducibility
+    cores = 7             #   Number of cores used for training
+  ),
+  se = TRUE,
+  se_params = list(       # Customize cluster-bootstrap standard errors:
+    B = 1000,             #   Number of bootstrap replications
+    clusters = clusters,  #   Cluster identifiers for clustered sampling, if not provided, use individual-level bootstrap
+    fix_seed = TRUE,      #   Enables deterministic seeding for reproducibility 
+    cores = 7             #   Number of cores for bootstrap replications
+  )
+)
+print(result)
+
+# Example 5: User provides fitted predictions
+# Example data: pred_real_Ycons (included in package)
+result <- rsv_estimate(
+  Y = pred_real_Ycons$Y,
+  D = pred_real_Ycons$D,
+  S_e = pred_real_Ycons$S_e,
+  S_o = pred_real_Ycons$S_o,
+  pred_Y = pred_real_Ycons$pred_Y,
+  pred_D = pred_real_Ycons$pred_D,
+  pred_S_e = pred_real_Ycons$pred_S_e,
+  pred_S_o = pred_real_Ycons$pred_S_o,
+  se = TRUE,
+  se_params = list(B = 1000, fix_seed = TRUE, cores = 7, clusters = pred_real_Ycons$clusters),
+)
+print(result)
 }
-
 }

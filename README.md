@@ -10,13 +10,6 @@ This package implements the nonparametric methods developed in:
 
 > Rambachan, A., Singh, R., and Viviano, D. (2025). "Program Evaluation with Remotely Sensed Outcomes." [arXiv:2411.10959](https://arxiv.org/abs/2411.10959)
 
-**Key features:**
-- Estimates treatment effects when outcomes are measured via remotely sensed variables
-- Combines experimental and observational samples under a stability assumption
-- Provides valid inference without rate conditions on machine learning predictions
-- Supports flexible sample structures (experimental-only, observational-only, or both)
-- Implements sample splitting and K-fold cross-fitting for prediction fitting
-
 ## Installation from source
 
 ```r

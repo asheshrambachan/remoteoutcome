@@ -14,17 +14,16 @@ print.rsv <- function(x, ...) {
   cat(sprintf("Coefficient: %.4f", x$coef))
   if (!is.null(x$se)) {
     cat(sprintf(" (SE: %.4f)\n", x$se))
-    ci_level <- (1 - x$alpha) * 100
-    cat(sprintf("%.0f%% CI: [%.4f, %.4f]\n", ci_level, x$ci_lower, x$ci_upper))
   } else {
     cat("\n")
   }
-  cat("\n")
-  cat(sprintf("Sample sizes:\n"))
-  cat(sprintf("  Experimental: %d\n", x$n_exp))
-  cat(sprintf("  Observational: %d\n", x$n_obs))
-  if (!is.null(x$n_both) && x$n_both > 0) {
-    cat(sprintf("  Both: %d\n", x$n_both))
+  if (!is.null(x$n_exp) && !is.null(x$n_obs)){
+    cat(sprintf("\nSample sizes:\n"))
+    cat(sprintf("  Experimental: %d\n", x$n_exp))
+    cat(sprintf("  Observational: %d\n", x$n_obs))
+    if (!is.null(x$n_both) && x$n_both > 0) {
+      cat(sprintf("  Both: %d\n", x$n_both))
+    }
   }
   if (!is.null(x$method)) {
     cat(sprintf("\nMethod: %s\n", x$method))
@@ -52,11 +51,9 @@ summary.rsv <- function(object, ...) {
       Estimate = object$coef,
       Std.Error = object$se,
       t.value = t_stat,
-      Pr..t. = p_value,
-      CI.Lower = object$ci_lower,
-      CI.Upper = object$ci_upper
+      Pr..t. = p_value
     )
-    rownames(coef_table) <- "Treatment Effect"
+    rownames(coef_table) <- "D"
 
     cat("Coefficient:\n")
     print(coef_table, digits = 4)
@@ -100,7 +97,7 @@ summary.rsv <- function(object, ...) {
 coef.rsv <- function(object, ...) {
   structure(
     object$coef,
-    names = "Treatment Effect"
+    names = "D"
   )
 }
 
@@ -119,15 +116,14 @@ vcov.rsv <- function(object, ...) {
   }
   structure(
     matrix(object$se^2, nrow = 1, ncol = 1),
-    dimnames = list("Treatment Effect", "Treatment Effect")
+    dimnames = list("D", "D")
   )
 }
-
 
 #' Confidence intervals for rsv objects
 #'
 #' @param object An object of class "rsv".
-#' @param parm Parameter (ignored, included for S3 compatibility).
+#' @param parm Parameter name. Must be "D" (default).
 #' @param level Confidence level (default 0.95). Note: this returns the CI
 #'   computed during estimation based on the alpha parameter. To change the
 #'   confidence level, re-run \code{rsv_estimate()} with a different alpha.
@@ -136,26 +132,26 @@ vcov.rsv <- function(object, ...) {
 #' @return A matrix with lower and upper confidence bounds.
 #'
 #' @export
-confint.rsv <- function(object, parm, level = 0.95, ...) {
-  if (is.null(object$ci_lower) || is.null(object$ci_upper)) {
-    stop("Confidence intervals not available. Re-run with se = TRUE.")
+confint.rsv <- function(object, parm = "D", level = 0.95, ...) {
+  # Check that parm is "D"
+  if (parm != "D") {
+    stop("Only parameter 'D' is supported for rsv objects.")
   }
 
-  # Check if requested level matches computed level
-  computed_level <- 1 - object$alpha
-  if (abs(level - computed_level) > 1e-6) {
-    warning(sprintf(
-      "Returning %.0f%% CI computed during estimation. To get %.0f%% CI, re-run rsv_estimate() with alpha = %.4f.",
-      computed_level * 100, level * 100, 1 - level
-    ))
+  if (is.null(object$se)) {
+    stop("Standard error is not available. Re-run with se = TRUE.")
   }
+  
+  alpha <- 1 - level
+  ci_lower <- object$coef - object$se * qnorm(1 - alpha / 2)
+  ci_upper <- object$coef + object$se * qnorm(1 - alpha / 2)
 
   # Determine column names based on alpha
-  lower_pct <- sprintf("%.1f %%", object$alpha / 2 * 100)
-  upper_pct <- sprintf("%.1f %%", (1 - object$alpha / 2) * 100)
+  lower_pct <- sprintf("%.1f %%", alpha / 2 * 100)
+  upper_pct <- sprintf("%.1f %%", (1 - alpha / 2) * 100)
 
   structure(
-    matrix(c(object$ci_lower, object$ci_upper), nrow = 1, ncol = 2),
-    dimnames = list("Treatment Effect", c(lower_pct, upper_pct))
+    matrix(c(ci_lower, ci_upper), nrow = 1, ncol = 2),
+    dimnames = list(parm, c(lower_pct, upper_pct))
   )
 }

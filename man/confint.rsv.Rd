@@ -4,12 +4,12 @@
 \alias{confint.rsv}
 \title{Confidence intervals for rsv objects}
 \usage{
-\method{confint}{rsv}(object, parm, level = 0.95, ...)
+\method{confint}{rsv}(object, parm = "D", level = 0.95, ...)
 }
 \arguments{
 \item{object}{An object of class "rsv".}
 
-\item{parm}{Parameter (ignored, included for S3 compatibility).}
+\item{parm}{Parameter name. Must be "D" (default).}
 
 \item{level}{Confidence level (default 0.95). Note: this returns the CI
 computed during estimation based on the alpha parameter. To change the

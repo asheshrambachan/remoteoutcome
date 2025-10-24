@@ -28,28 +28,20 @@ remotes::install_github("https://github.com/asheshrambachan/remoteoutcome")
 
 ## Vignettes
 
-The package includes vignettes demonstrating how to use the `remoteoutcome` package 
-to estimate treatment effects when outcomes are measured using remotely sensed variables (RSVs). 
-The vignettes replicate the re-analysis of the Smartcards experiment (Muralidharan et al. 2016; Muralidharan et al. 2023) reported in Section 5 of *Rambachan, Singh, and Viviano (2025)* (specifically, Figure 7). 
-The vignettes replicate the analysis in two ways:
+The package includes a vignette illustrating how the `remoteoutcome` package can be used
+to estimate treatment effects when outcomes are measured using remotely sensed variables (RSVs).
+In particular, it illustrates how `remoteoutcome` can be used to re-analyze the Smartcards experiment (Muralidharan et al. 2016; Muralidharan et al. 2023), following the same design reported in Section 5 of *Rambachan, Singh, and Viviano (2025). 
 
-1. `treatment-effects-original-predictions.Rmd:` uses the precomputed random forest
-predictions based on the remotely sensed variables constructed in *Rambachan, 
-Singh, and Viviano (2025).*
-2. `treatment-effects.Rmd:` retrains the random forest predictions based on the 
-remotely sensed variables. 
-
-The vignettes can be accessed via:
+The vignette can be accessed via:
 
 ```r
 library(remoteoutcome)
-vignette("treatment-effects") # A vignette that retrain the models using ranger package.
-vignette("treatment-effects-original-predictions") # A vignette that uses the original randomForest-based predictions from the paper and applies the RSV estimator using those precomputed values. 
+vignette("treatment-effects")
 ```
 
 ## Sample Splitting Options in `remoteoutcome`
 
-The estimator for the average treatment effect in the experimental sample relies
+The estimator implemented in `remoteoutcome` relies
 on sample splitting. `remoteoutcome` provides the user with three possible options: 
 (i) cross-fitting, (ii) sample-splitting, and (iii) no sample splitting.
 

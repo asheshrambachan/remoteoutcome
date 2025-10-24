@@ -23,15 +23,8 @@ knitr::opts_chunk$set(
 
 # Overview
 
-This vignette demonstrates how to use the `remoteoutcome` package to estimate treatment effects when outcomes are measured using remotely sensed variables (RSVs). It replicates **Figure 7**  of *Rambachan, Singh, and Viviano (2025)*, which analyzes data from a randomized evaluation of an anti-poverty program in Andhra Pradesh, India (Muralidharan et al., 2016; Muralidharan et al. 2023). 
-
-This vignette introduces two implementation changes relative to *Rambachan, Singh, and Viviano (2025)*:
-
-1. The paper estimated \(\text{PRED}_Y(R), \text{PRED}_D(R), \text{PRED}_{S_e}(R), \text{PRED}_{S_o}(R)\) using `randomForest` package This vignette instead uses `ranger`, a modern random forest package, that improves speed and reproducibility.
-
-2. The paper computed the bootstrap standard errors using the `boot` package with parallelization without setting the seed. `remoteoutcome` uses a custom cluster bootstrap that supports deterministic seeding via `fix_seed = TRUE`, setting `set.seed(b)` for the *b*‑th replication.
-
-Under these changes, both point estimates and confidence intervals remain numerically identical to those in the paper. For completeness, we also provide a complementary vignette, `vignette("poverty-application-original-preds")`, which reproduces the figures using the original `randomForest` predictions. These plots align even more closely with those in the published paper, with only small differences in standard errors due to the updated bootstrap procedure described above.
+This vignette demonstrates how to use the `remoteoutcome` package to estimate treatment effects when outcomes are measured using remotely sensed variables (RSVs). It illustrates how **Figure 7**  of *Rambachan, Singh, and Viviano (2025)* could be produced using `remoteoutcome`, which analyzes data from a randomized evaluation of an anti-poverty program in Andhra Pradesh, India (Muralidharan et al., 2016; Muralidharan et al. 2023). We specifically illustrate how `remoteoutcome` can be used to (i) 
+estimate predictions of outcomes, treatment, and the sample indicator using remotely sensed variables, and (ii) report estimates of the treatment effect using cross-fitting.
 
 # Data
 
@@ -587,6 +580,16 @@ results %>%
   filter(outcome=="Middle Income") %>%
   plot_treatment_effects(title="Middle Income")
 ```
+
+# Additional Notes
+
+This vignette introduces two implementation changes relative to *Rambachan, Singh, and Viviano (2025)*:
+
+1. The paper estimated \(\text{PRED}_Y(R), \text{PRED}_D(R), \text{PRED}_{S_e}(R), \text{PRED}_{S_o}(R)\) using `randomForest` package This vignette instead uses `ranger`, a modern random forest package, that improves speed and reproducibility.
+
+2. The paper computed the bootstrap standard errors using the `boot` package with parallelization without setting the seed. `remoteoutcome` uses a custom cluster bootstrap that supports deterministic seeding via `fix_seed = TRUE`, setting `set.seed(b)` for the *b*‑th replication.
+
+Under these changes, both point estimates and confidence intervals are similar to those reported in the paper up to small numerical differences introduced by these changes.
 
 # References
 

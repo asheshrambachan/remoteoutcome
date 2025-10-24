@@ -12,7 +12,7 @@ This package implements the nonparametric methods developed in:
 
 ## Installation from source
 
-The package may be installed by using the function ``install_github()'' from the
+The package may be installed by using the function `install_github()` from the
 remotes package: 
 
 ```r
@@ -26,10 +26,31 @@ Sys.setenv("R_REMOTES_NO_ERRORS_FROM_WARNINGS" = "true")
 remotes::install_github("https://github.com/asheshrambachan/remoteoutcome")
 ```
 
-## Sample Splitting Options
+## Vignettes
+
+The package includes vignettes demonstrating how to use the `remoteoutcome` package 
+to estimate treatment effects when outcomes are measured using remotely sensed variables (RSVs). 
+The vignettes replicate the re-analysis of the Smartcards experiment (Muralidharan et al. 2016; Muralidharan et al. 2023) reported in Section 5 of *Rambachan, Singh, and Viviano (2025)* (specifically, Figure 7). 
+The vignettes replicate the analysis in two ways:
+
+1. `treatment-effects-original-predictions.Rmd:` uses the precomputed random forest
+predictions based on the remotely sensed variables constructed in *Rambachan, 
+Singh, and Viviano (2025).*
+2. `treatment-effects.Rmd:` retrains the random forest predictions based on the 
+remotely sensed variables. 
+
+The vignettes can be accessed via:
+
+```r
+library(remoteoutcome)
+vignette("treatment-effects") # A vignette that retrain the models using ranger package.
+vignette("treatment-effects-original-predictions") # A vignette that uses the original randomForest-based predictions from the paper and applies the RSV estimator using those precomputed values. 
+```
+
+## Sample Splitting Options in `remoteoutcome`
 
 The estimator for the average treatment effect in the experimental sample relies
-on sample splitting. ``remoteoutcomes'' provides the user with three possible options: 
+on sample splitting. `remoteoutcome` provides the user with three possible options: 
 (i) cross-fitting, (ii) sample-splitting, and (iii) no sample splitting.
 
 ### 1. Cross-Fitting (Recommended)
@@ -113,12 +134,12 @@ print(result)
 #> Method: none
 ```
 
-## User-Provided Predictions
+## User-Provided Predictions in `remoteoutcome`
 
-``remoteoutcome'' allows the user to pass their own fitted predictions using the 
+`remoteoutcome` allows the user to pass their own fitted predictions using the 
 remotely sensed variable. This can be useful if the user would like to train predictions 
 using the remotely sensed variable using more complex machine learning methods 
-that are not directly implemented by ``remoteoutcome.''
+that are not directly implemented by `remoteoutcome.`
 
 If you have your own fitted predictions, provide them directly:
 
@@ -152,7 +173,7 @@ print(result)
 #> Method: none
 ```
 
-## Quick Start
+## Quick Start Example of `remoteoutcome`
 
 We provide a brief illustration of how ``remoteoutcome'' can be used to estimate
 treatment effects. 
@@ -226,31 +247,7 @@ confint(result, level = 0.90)
 #> D -0.03319573 0.006176239
 ```
 
-
-## Vignettes
-
-The package includes detailed vignettes demonstrating how to use the `remoteoutcome` package 
-to estimate treatment effects when outcomes are measured using remotely sensed variables (RSVs). 
-Specifically, both vignettes replicate **Figure 7**  of *Rambachan, Singh, and Viviano (2025)*, with only minor differences arising from implementation updates that do **not** affect the estimator or any of its statistical properties. 
-
-The updates are as follows:
-
-1. The paper estimated \(\text{PRED}_Y(R), \text{PRED}_D(R), \text{PRED}_{S_e}(R), \text{PRED}_{S_o}(R)\) using `randomForest` package This vignette instead uses `ranger`, a modern random forest package, that improves speed and reproducibility. 
-
-2. The paper computed the bootstrap standard errors using the `boot` package with parallelization. This vignette uses a *custom cluster bootstrap* that supports deterministic seeding via `fix_seed = TRUE`, setting `set.seed(b)` for the *b*‑th replication. This preserves the resampling logic, ensuring reproducibility even under parallel execution.
-
-Under these changes, both point estimates and confidence intervals remain numerically identical to those in the paper. 
-Any remaining minute deviations stem solely from differences in random-number-generation (RNG) behavior, not from the estimator itself.
-
-The vignettes can be accessed via:
-
-```r
-library(remoteoutcome)
-vignette("treatment-effects") # A vignette that retrain the models using ranger package.
-vignette("treatment-effects-original-predictions") # A vignette that uses the original randomForest-based predictions from the paper and applies the RSV estimator using those precomputed values. 
-```
-
-## Planned Features
+## Planned Features for `remoteoutcome`
 
 The current version (0.1.0) implements the core estimator proposed in 
 Rambachan, Singh and Viviano (2025) for binary outcomes without pre-treatment covariates 

@@ -25,8 +25,7 @@ knitr::opts_chunk$set(
 
 This vignette demonstrates how to use the `remoteoutcome` package to estimate treatment effects when outcomes are measured using remotely sensed variables (RSVs). Specifically, it replicates **Figure 7**  of *Rambachan, Singh, and Viviano (2025)* using the original `randomForest`-based predictions from the paper and applies the RSV estimator using those precomputed values. It complements `vignette("poverty-application")`, which retrains all predictive models using the `ranger` package for improved computational efficiency and reproducibility. 
 
-Because the same estimator and resampling procedure are used, the treatment effect estimates here are **identical** to those in *Rambachan, Singh, and Viviano (2025)*. There is a minimal variation in confidence intervals that arise from the updates in bootstrap procedure, not from the underlying estimator or data. Specifically, the paper computed the bootstrap standard errors using the `boot` package with parallelization without setting the seed. We now use a *custom cluster bootstrap* that supports deterministic seeding via `fix_seed = TRUE`, setting `set.seed(b)` for the *b*‑th replication. This preserves the resampling logic, ensuring reproducibility even under parallel execution.
-
+Because the same estimator and resampling procedure are used, the treatment effect estimates here are **identical** to those in *Rambachan, Singh, and Viviano (2025)*. There is a minimal variation in confidence intervals that arise from the updates in bootstrap procedure, not from the underlying estimator or data. Specifically, the paper computed the bootstrap standard errors using the `boot` package with parallelization. We now use a *custom cluster bootstrap* that supports deterministic seeding via `fix_seed = TRUE`, setting `set.seed(b)` for the *b*‑th replication. This preserves the resampling logic, ensuring reproducibility even under parallel execution.
 
 # Data
 
@@ -166,10 +165,10 @@ data_real %>%
 ```
 
 We now estimate treatment effects for each poverty outcome using the `rsv_estimate()` function.
-This function implements the RSV estimator described in **Rambachan, Singh, and Viviano (2025)**.
+This function implements the RSV estimator described in **Rambachan, Singh, and Viviano (2025)** (Algorithm 1).
 
-In this vignette, instead of retraining predictive models, we use pre-computed predictions generated with the `randomForest` package--the same method used to produce the estimates reported in the paper.
-This approach allows the results here to closely mirror the published values. There is still minor differences in CI due to changes in bootstrap procedure as mentioned previously.
+In this vignette, instead of retraining predictive models, we use pre-computed predictions generated with the `randomForest` package--the same method used to produce the estimates reported in the paper. This approach allows the results here to closely mirror the published values. 
+There are minor numerical differences in CI due to changes in bootstrap procedure as mentioned previously.
 
 Key arguments in this example:
 
@@ -501,126 +500,11 @@ results %>%
   plot_treatment_effects(title="Middle Income")
 ```
 
-
-<!-- # Denominator (Relevance) -->
-
-<!-- The RSV estimator's denominator (relevance) summarizes how informative the remotely sensed variables are for predicting the outcome. We report the point estimate, standard error, and the 90% CI. -->
-
-<!-- ```{r compile-denominator-results} -->
-<!-- # Helper function to extract results -->
-<!-- extract_denominator <- function(model) { -->
-<!--   level = 0.90 -->
-<!--   alpha = 1 - level -->
-<!--   coef_val <- model$denominator -->
-<!--   se_val <- model$denominator_se -->
-<!--   ci <- c( -->
-<!--     coef_val - qnorm(1 - alpha/2) * se_val,  -->
-<!--     coef_val + qnorm(1 - alpha/2) * se_val -->
-<!--   ) -->
-
-<!--   data.frame( -->
-<!--     coef = coef_val, -->
-<!--     se = se_val, -->
-<!--     lci = ci[1], -->
-<!--     uci = ci[2], -->
-<!--     row.names = NULL -->
-<!--   ) -->
-<!-- } -->
-
-<!-- results_denominator <- rbind( -->
-<!--   data.frame(outcome = "Consumption", estimator = "RSV: Synthetic samples", extract_denominator(rsv_synth_Ycons)), -->
-<!--   data.frame(outcome = "Consumption", estimator = "RSV: Real samples", extract_denominator(rsv_real_Ycons)), -->
-<!--   data.frame(outcome = "Low Income", estimator = "RSV: Synthetic samples", extract_denominator(rsv_synth_Ylowinc)), -->
-<!--   data.frame(outcome = "Low Income", estimator = "RSV: Real samples", extract_denominator(rsv_real_Ylowinc)), -->
-<!--   data.frame(outcome = "Middle Income", estimator = "RSV: Synthetic samples", extract_denominator(rsv_synth_Ymidinc)), -->
-<!--   data.frame(outcome = "Middle Income", estimator = "RSV: Real samples", extract_denominator(rsv_real_Ymidinc)) -->
-<!-- ) -->
-<!-- ``` -->
-
-
-<!-- ```{r results-denominator-table, echo = FALSE} -->
-<!-- # Consumption poverty -->
-<!-- kable( -->
-<!--   results_denominator,  -->
-<!--   digits = 3,  -->
-<!--   row.names = FALSE, -->
-<!--   format = "markdown", -->
-<!--   align = "llrrrr", -->
-<!--   col.names = c("Outcome", "Estimator", "Coefficient", "SE", "Lower CI", "Upper CI"), -->
-<!--   caption = "Denominator (Relevance)" -->
-<!--   ) %>% -->
-<!--   kable_styling(bootstrap_options = c("striped", "hover")) -->
-<!-- ``` -->
-
-
-<!-- We also visualize the denominator estimates with their 90% confidence intervals for the synthetic and real sample definitions. -->
-
-<!-- ```{r plot-denominator-function} -->
-<!-- # Plot function -->
-<!-- plot_denominator <- function(results, title=waiver()) { -->
-<!--   results$estimator <- factor(results$estimator,levels = c( -->
-<!--     "RSV: Synthetic samples", -->
-<!--     "RSV: Real samples" -->
-<!--   )) -->
-
-<!--   ggplot(results, aes(x = estimator, y = coef, shape = estimator, color = estimator)) + -->
-<!--     geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") + -->
-<!--     geom_errorbar(aes(ymin=lci, ymax=uci), linewidth=0.65, width = 0.28) + -->
-<!--     geom_point(size = 2.5) + -->
-<!--     labs( -->
-<!--       title = title, -->
-<!--       x = "", -->
-<!--       y = "Denominator (Relevance)", -->
-<!--       shape=NULL, -->
-<!--       color=NULL -->
-<!--     ) + -->
-<!--     scale_color_manual(values = c( -->
-<!--       "RSV: Synthetic samples" = "#8DB1CE", -->
-<!--       "RSV: Real samples" = "#43739D" -->
-<!--     )) + -->
-<!--     scale_shape_manual(values = c( -->
-<!--       "RSV: Synthetic samples" = 15, -->
-<!--       "RSV: Real samples" = 19 -->
-<!--     )) + -->
-<!--     scale_x_discrete(labels = ~ str_wrap(as.character(.x), 5, whitespace_only=F)) + -->
-<!--     scale_y_continuous(limits = c(0,6.1), minor_breaks = seq(-2,10,0.25)) + -->
-<!--     theme_bw() + -->
-<!--     theme( -->
-<!--       legend.position="none", -->
-<!--       panel.grid.major.x=element_blank(), -->
-<!--       panel.grid.minor.x=element_blank(), -->
-<!--       panel.grid.major.y=element_line(linewidth=0.3), -->
-<!--       panel.grid.minor.y=element_line(linewidth=0.1), -->
-<!--       text = element_text(size=14, family="Times", color="black"), -->
-<!--       axis.title.y = element_text(size=14, family="Times", color="black"), -->
-<!--       axis.title.x = element_blank(), -->
-<!--       axis.text = element_text(size=12, family="Times", color="black"), -->
-<!--     ) -->
-<!-- } -->
-<!-- ``` -->
-
-<!-- ```{r plot-denominator-Ycons, fig.width=3, fig.height=3} -->
-<!-- results_denominator %>%  -->
-<!--   filter(outcome=="Consumption") %>% -->
-<!--   plot_denominator(title="Consumption") -->
-<!-- ``` -->
-
-<!-- ```{r plot-denominator-Ylowinc, fig.width=3, fig.height=3} -->
-<!-- results_denominator %>%  -->
-<!--   filter(outcome=="Low Income") %>% -->
-<!--   plot_denominator(title="Low Income") -->
-<!-- ``` -->
-
-<!-- ```{r plot-denominator-Ymidinc, fig.width=3, fig.height=3} -->
-<!-- results_denominator %>%  -->
-<!--   filter(outcome=="Middle Income") %>% -->
-<!--   plot_denominator(title="Middle Income") -->
-<!-- ``` -->
-
-
 # References
 
-Muralidharan, K., Niehaus, P., and Sukhtankar, S. (2017). "General Equilibrium Effects of (Improving) Public Employment Programs: Experimental Evidence from India." *NBER Working Paper 23838*.
+Muralidharan, K., Niehaus, P., and Sukhtankar, S. (2016). "Building state capacity: Evidence from biometric smartcards in India." *American Economic Review* 106 (10), 2895-2929.
+
+Muralidharan, K., Niehaus, P., and Sukhtankar, S. (2023). "General equilibrium effects of (improving) public employment programs: Experimental evidence from India." *Econometrica* 91 (4), 1261-1295.
 
 Rambachan, A., Singh, R., and Viviano, D. (2025). "Program Evaluation with Remotely Sensed Outcomes." *arXiv:2411.10959*.
 

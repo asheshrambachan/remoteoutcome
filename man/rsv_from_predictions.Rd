@@ -29,13 +29,13 @@ rsv_from_predictions(
 
 \item{S_o}{Observational sample indicator (0 or 1).}
 
-\item{pred_Y}{(Optional) Predicted \eqn{E[Y \mid R, S_o = 1]}. If provided, other predictions must also be provided.}
+\item{pred_Y}{(Optional) Predicted \eqn{P[Y \mid R, S_o = 1]}, \eqn{\text{PRED}_Y(R)}. If provided, other predictions must also be provided.}
 
-\item{pred_D}{(Optional) Predicted \eqn{E[D \mid R, S_e = 1]}.}
+\item{pred_D}{(Optional) Predicted \eqn{P[D \mid R, S_e = 1]}, \eqn{\text{PRED}_D(R)}.}
 
-\item{pred_S_e}{(Optional) Predicted \eqn{P(S_e = 1 \mid R)}.}
+\item{pred_S_e}{(Optional) Predicted \eqn{P(S_e = 1 \mid R)}, \eqn{\text{PRED}_{S_e}(R)}.}
 
-\item{pred_S_o}{(Optional) Predicted \eqn{P(S_o = 1 \mid R)}.}
+\item{pred_S_o}{(Optional) Predicted \eqn{P(S_o = 1 \mid R)}, \eqn{\text{PRED}_{S_o}(R)}.}
 
 \item{theta_init}{Initial estimate of the treatment effect on the train data.}
 

@@ -33,21 +33,28 @@ cat("Step 1: Generating documentation...\n")
 roxygen2::roxygenise(pkg_dir)
 cat("Documentation generated in man/\n")
 
-# Step 2: Check package
-cat("\nStep 2: Checking package...\n")
+# Step 2: Build manual (PDF)
+cat("\nStep 2: Building manual...\n")
+manual_file <- devtools::build_manual(pkg_dir, path = pkg_dir)
+cat("Manual built\n")
+
+
+# Step 3: Check package
+cat("\nStep 3: Checking package...\n")
 check_results <- devtools::check(pkg_dir)
 
-# Step 3: Build package
-cat("\nStep 3: Building package and vignettes...\n")
+# Step 4: Build package
+cat("\nStep 4: Building package and vignettes...\n")
 pkg_file <- devtools::build(pkg_dir)
 cat("Package built:", pkg_file, "\n")
 
-# Step 4: Install package
-cat("\nStep 4: Installing package...\n")
+# Step 5: Install package
+cat("\nStep 5: Installing package...\n")
 devtools::install(pkg_dir)
 cat("Package installed!\n")
 
-# # Step 5: Create site 
+
+# Step 6: Create site 
 create_site <- FALSE
 if (create_site){
   required_pkgs <- c("pkgdown", "usethis")
@@ -58,7 +65,7 @@ if (create_site){
     }
   }
   
-  cat("\nStep 5: Create site ...\n")
+  cat("\nStep 6: Create site ...\n")
   usethis::use_pkgdown_github_pages()
   pkgdown::build_site(pkg_dir)
 }

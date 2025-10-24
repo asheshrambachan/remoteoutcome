@@ -5,50 +5,48 @@
 \title{Bootstrap standard errors for RSV estimator}
 \usage{
 rsv_bootstrap(
-  Y,
-  D,
-  S,
-  pred_Y,
-  pred_D,
-  pred_S_e,
-  pred_S_o,
-  clusters = NULL,
-  B = 1000,
-  alpha = 0.05,
-  eps = 1e-06
+  observations,
+  predictions,
+  theta_init,
+  eps = 0.01,
+  se_params = list(B = 1000, fix_seed = FALSE, cores = 1, clusters = NULL)
 )
 }
 \arguments{
-\item{Y}{Outcome variable.}
+\item{observations}{a data frame containing:
+\describe{
+  \item{Y}{Outcome variable (binary, NA where not observed)}
+  \item{D}{Treatment indicator (binary, NA where not observed)}
+  \item{S_e}{Experimental sample indicator (0 or 1)}
+  \item{S_o}{Observational sample indicator (0 or 1)}
+}}
 
-\item{D}{Treatment indicator.}
+\item{predictions}{a data frame containing:
+\describe{
+  \item{Y}{Predicted \eqn{P(Y = 1 \mid R, S_o = 1)}, \eqn{\text{PRED}_Y(R)}}
+  \item{D}{Predicted \eqn{P(D = 1 \mid R, S_e = 1)}, \eqn{\text{PRED}_D(R)}}
+  \item{S_e}{Predicted \eqn{P(S_e = 1 \mid R)}, \eqn{\text{PRED}_{S_e}(R)}}
+  \item{S_o}{Predicted \eqn{P(S_o = 1 \mid R)}, \eqn{\text{PRED}_{S_o}(R)}}
+}}
 
-\item{S}{Sample indicator.}
+\item{theta_init}{Initial estimate of the treatment effect.}
 
-\item{pred_Y}{Predicted E[Y | R, S_o = 1].}
+\item{eps}{Small constant for numerical stability of \code{sigma2} estimate (default \code{1e-2}).}
 
-\item{pred_D}{Predicted E[D | R, S_e = 1].}
-
-\item{pred_S_e}{Predicted P(S_e = 1 | R).}
-
-\item{pred_S_o}{Predicted P(S_o = 1 | R).}
-
-\item{clusters}{Cluster identifiers for bootstrap.}
-
-\item{B}{Number of bootstrap replications. Default is 1000.}
-
-\item{alpha}{Significance level for confidence interval. Default is 0.05 (95% CI).}
-
-\item{eps}{Small constant for numerical stability.}
+\item{se_params}{List of bootstrap parameters:
+\describe{
+  \item{B}{Number of bootstrap replications (default \code{1000})}
+  \item{fix_seed}{If \code{TRUE}, deterministic seeding is used with `set.seed(b)` for the *b*‑th replication (default \code{FALSE})}
+  \item{cores}{Number of cores for bootstrap replications (default \code{1}).}
+  \item{clusters}{Clusters for the bootstrap. If \code{NULL}, uses individual-level bootstrap}
+}}
 }
 \value{
-A list containing:
-  \describe{
-    \item{se}{Standard error of treatment effect}
-    \item{ci_lower}{Lower bound of confidence interval}
-    \item{ci_upper}{Upper bound of confidence interval}
-    \item{alpha}{Significance level used}
-  }
+A list with components:
+\describe{
+  \item{se}{Standard error of the treatment effect}
+  \item{denominator_se}{Standard error of the denominator of the treatment effect}
+}
 }
 \description{
 Computes cluster-bootstrap standard errors for the RSV estimator.

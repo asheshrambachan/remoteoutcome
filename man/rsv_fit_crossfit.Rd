@@ -4,35 +4,50 @@
 \alias{rsv_fit_crossfit}
 \title{Fit predictions with K-fold cross-fitting}
 \usage{
-rsv_fit_crossfit(R, Y, D, S, nfolds = 5, ml_params = list(), seed = NULL)
+rsv_fit_crossfit(
+  R,
+  Y,
+  D,
+  S_e,
+  S_o,
+  eps = 0.01,
+  ml_params = list(),
+  se = FALSE,
+  se_params = list()
+)
 }
 \arguments{
 \item{R}{Remotely sensed variable. Required if predictions are not provided.}
 
-\item{Y}{Outcome variable (binary, NA where not observed). Required if
-predictions are not provided.}
+\item{Y}{Outcome variable (binary, \code{NA} where not observed).}
 
-\item{D}{Treatment indicator (binary, NA where not observed). Required if
-predictions are not provided.}
+\item{D}{Treatment indicator (binary, \code{NA} where not observed).}
 
-\item{S}{Sample indicator. Can be:
+\item{S_e}{Experimental sample indicator (0 or 1).}
+
+\item{S_o}{Observational sample indicator (0 or 1).}
+
+\item{eps}{Small constant for numerical stability of \code{sigma2} estimate (default \code{1e-2}).}
+
+\item{ml_params}{List of parameters for random forest:
 \describe{
-  \item{"e"}{Experimental sample only (observe D, R)}
-  \item{"o"}{Observational sample only (observe Y, R)}
-  \item{"both"}{Both samples (observe Y, D, R)}
+  \item{ntree}{Number of trees}
+  \item{classwt_Y}{Class weights for \code{pred_Y} model; default \code{c(10, 1)})}
+  \item{seed}{User specified seed passed to each \code{ranger} function for reproducibility; default \code{NULL}}
+  \item{cores}{Number of cores used by `ranger` for parallel training; default \code{1}}
+  \item{nfolds}{Number of folds for cross-fitting (default \code{5}).}
+  \item{train_ratio}{Proportion for training in sample split (default \code{0.5}).}
 }}
 
-\item{nfolds}{Number of folds for cross-fitting. Default is 5. Only used if
-\code{method = "crossfit"}.}
+\item{se}{Logical; compute standard errors via bootstrap? (default \code{TRUE}).}
 
-\item{ml_params}{List of parameters for random forest. Supported parameters:
+\item{se_params}{List of bootstrap parameters:
 \describe{
-  \item{ntree}{Number of trees. Default is 500.}
-  \item{classwt_Y}{Class weights for outcome model. Default is c(10, 1).}
-}
-Additional parameters will be passed to \code{randomForest::randomForest}.}
-
-\item{seed}{Random seed for reproducibility in sample splitting/cross-fitting.}
+  \item{B}{Number of bootstrap replications (default \code{1000})}
+  \item{fix_seed}{If \code{TRUE}, deterministic seeding is used with `set.seed(b)` for the *b*‑th replication (default \code{FALSE})}
+  \item{cores}{Number of cores for bootstrap replications (default \code{1}).}
+  \item{clusters}{Clusters for the bootstrap. If \code{NULL}, uses individual-level bootstrap}
+}}
 }
 \description{
 Performs K-fold cross-fitting: splits data into K folds, fits predictions

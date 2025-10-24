@@ -4,39 +4,34 @@
 \alias{fit_predictions_rf}
 \title{Fit predictions using random forest}
 \usage{
-fit_predictions_rf(
-  R,
-  Y,
-  D,
-  S,
-  R_pred = NULL,
-  ml_params = list(ntree = 500, classwt_Y = c(10, 1))
-)
+fit_predictions_rf(R, Y, D, S_e, S_o, R_pred = NULL, ml_params = list())
 }
 \arguments{
-\item{R}{Remotely sensed variable (continuous or discrete).}
+\item{R}{Remotely sensed variable.}
 
 \item{Y}{Outcome variable (binary, NA for experimental-only sample).}
 
 \item{D}{Treatment indicator (binary, NA for observational-only sample).}
 
-\item{S}{Sample indicator ("e", "o", or "both").}
+\item{S_e}{Experimental sample indicator (0 or 1).}
+
+\item{S_o}{Observational sample indicator (0 or 1).}
 
 \item{R_pred}{Vector of R values on which to make predictions (defaults to R).}
 
 \item{ml_params}{List of parameters for random forest. Should include:
 \describe{
   \item{ntree}{Number of trees}
-  \item{classwt_Y}{Class weights for outcome model}
+  \item{classwt_Y}{Class weights for \code{pred_Y} model; default \code{c(10, 1)})}
+  \item{seed}{User specified seed passed to each \code{ranger} function for reproducibility; default \code{NULL}}
+  \item{cores}{Number of cores used by `ranger` for parallel training; default \code{1}}
 }}
 }
 \value{
-A data frame with columns:
+A list containing: :
   \describe{
-    \item{pred_Y}{E[Y | R, S_o = 1]}
-    \item{pred_D}{E[D | R, S_e = 1]}
-    \item{pred_S_e}{P(S_e = 1 | R)}
-    \item{pred_S_o}{P(S_o = 1 | R)}
+    \item{theta_init}{Initial estimate of the treatment effect}
+    \item{predictions}{A data frame with columns: \code{pred_Y}}, \code{pred_D}, \code{pred_S_e}, \code{pred_S_o}
   }
 }
 \description{

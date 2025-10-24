@@ -1,0 +1,721 @@
+---
+title: "Estimating Treatment Effects with Remotely Sensed Variables"
+author: "Rambachan, Singh, and Viviano (2025)"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_document:
+    toc: true
+    toc_depth: 3
+vignette: >
+  %\VignetteIndexEntry{Estimating Treatment Effects with Remotely Sensed Variables}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5
+)
+```
+
+# Overview
+
+This vignette demonstrates how to use the `remoteoutcome` package to estimate treatment effects when outcomes are measured using remotely sensed variables (RSVs). Specifically, it replicates **Figure 7**  of *Rambachan, Singh, and Viviano (2025)*, which analyzes data from a randomized evaluation of an anti-poverty program in Andhra Pradesh, India (Muralidharan et al., 2017).
+
+This vignette reproduces estimates that are **numerically identical** to those in *Rambachan, Singh, and Viviano (2025)*, with only minor differences arising from implementation updates that do **not** affect the estimator or any of its statistical properties. The updates are as follows:
+
+1. The paper estimated \(\text{PRED}_Y(R), \text{PRED}_D(R), \text{PRED}_{S_e}(R), \text{PRED}_{S_o}(R)\) using `randomForest` package This vignette instead uses `ranger`, a modern random forest package, that improves speed and reproducibility. 
+
+2. The paper computed the bootstrap standard errors using the `boot` package with parallelization without setting the seed. Three prediction tasks (`Ycons`, `Ylowinc`, and `Ymidinc`) were executed in parallel, each using roughly 80 cores. We now use a *custom cluster bootstrap* that supports deterministic seeding via `fix_seed = TRUE`, setting `set.seed(b)` for the *b*‑th replication. This preserves the resampling logic, ensuring reproducibility even under parallel execution.
+
+Under these changes, both point estimates and confidence intervals remain numerically identical to those in the paper. Any remaining minute deviations stem solely from differences in random-number-generation (RNG) behavior, not from the estimator itself.
+
+For completeness, we also provide a complementary vignette, `vignette("poverty-application-preds")`, which reproduces the figures using the original `randomForest` predictions. These plots align even more closely with those in the published paper, with only small differences in standard errors due to the updated bootstrap procedure described above.
+
+
+# Data
+
+The dataset combines experimental and remotely sensed information used in the poverty application.  
+It includes:
+
+- **Outcome variables:** Poverty indicators such as household consumption and income measures.  
+- **Treatment variable:** Program assignment indicating whether a village received the Smartcard intervention.  
+- **Remotely sensed variables:** Satellite-based measures of luminosity and related features.  
+- **Sample indicators:** Experimental design identifiers distinguishing treatment and control groups.
+
+```{r load-data}
+library(psych)
+library(latex2exp)
+library(stringr)
+library(knitr)
+library(tibble)
+library(kableExtra)
+library(dplyr, warn.conflicts = F)
+library(ggplot2, warn.conflicts = F)
+library(fixest)
+library(tidyr)
+library(remoteoutcome)
+
+cores <- 7
+
+# Load poverty data (included in package)
+# data
+```
+
+```{r tab-data, echo=FALSE}
+data %>% 
+  select(shrid2, clusters, wave, D, Ylowinc, Ymidinc, Ycons, luminosity_max.2012, luminosity_max.2013, satellite_1, satellite_2) %>%
+  group_by(D) %>%
+  slice(1:2) %>%
+  ungroup() %>%
+  head()  %>%
+  kable(digits = 3, caption="Data overview") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+```{r}
+cat(sprintf("Total observations: %d\n", nrow(data)))
+cat(sprintf("Number of clusters (subdistricts): %d\n",
+            length(unique(data$clusters))))
+```
+
+The poverty outcomes analyzed in the application are defined as follows:
+
+  - `Ycons`: Household consumption below 25th percentile.
+  - `Ylowinc`: No household members earning more than 5,000 INR per month.
+  - `Ymidinc`: No household members earning more than 10,000 INR per month.
+  
+```{r tab-outcomes, echo=FALSE}
+data %>% 
+  select(Ycons, Ylowinc, Ymidinc) %>%
+  rename(c("Consumption"=Ycons, "Low Income"=Ylowinc, "Middle Income"=Ymidinc)) %>%
+  describe() %>%
+  select(c("n", "mean", "sd", "min", "max")) %>%
+  rownames_to_column(var = "Outcome") %>%
+  kable(digits = 3, caption="Outcome Variables") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+The experiment was implemented in multiple phases, with villages randomly assigned to receive Smartcards in different years:
+
+- **Experimental: Treated (2010)**: Villages that received Smartcards in 2010
+- **Experimental: Untreated (2011)**: Buffer villages assigned to receive Smartcards in 2011.
+- **Experimental: Untreated (2012)**: Control villages assigned to receive Smartcards in 2012.
+- **Observational (N/A)**: Non-study or holdout villages excluded from the experiment.
+
+```{r tab-exp-design, echo=FALSE}
+tab <- data %>% 
+  group_by(`Sample (Smartcard)`) %>%
+  summarise(
+    `Number of villages`        = n_distinct(shrid2),
+    `Average population`        = round(mean(tot_p), 0),
+    `Average fraction female`   = round(mean(tot_f), 3),
+    .groups = "drop"
+  ) %>%
+  t() %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "Metric")
+
+## Use first row as column names
+colnames(tab) <- tab[1, ]
+tab <- tab[-1, ]
+
+## Create markdown table
+kable(tab, row.names = FALSE, caption="Experimental Design") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+# Analysis
+
+## RSV Estimation with Real Sample Definition
+
+We demonstrates how to estimate treatment effects using the **RSV estimator** under the *real sample definition*.
+
+Following the study design, we construct two key sample indicators:
+
+- **Experimental sample** (\(S_e\)): Villages that were part of the randomized evaluation
+  - Experimental: Treated (2010)
+  - Experimental: Untreated (2011)
+  - Experimental: Untreated (2012)
+  
+- **Observational sample** (\(S_o\)): 
+  - Experimental: Untreated (2011)
+  - Observational (N/A)
+
+This creates an overlap where *Experimental: Untreated (2011)* villages are in both samples.
+
+```{r real-sample-def}
+data_real <- data %>%
+  mutate(
+    # Sample indicator
+    S = case_when(
+      `Sample (Smartcard)` == "Experimental: Treated (2010)" ~ "e", # Experimental only
+      `Sample (Smartcard)` == "Experimental: Untreated (2011)" ~ "both",  # Both samples
+      `Sample (Smartcard)` == "Experimental: Untreated (2012)" ~ "e", # Experimental only
+      `Sample (Smartcard)` == "Observational (N/A)" ~ "o" # Observational only
+    ),
+    
+    # Treatment observed only in experimental sample
+    D = ifelse((S=="both") | (S=="e"), D, NA),
+    
+    # Outcomes observed only in observational sample
+    Ycons = ifelse((S=="both") | (S=="o"), Ycons, NA),
+    Ylowinc = ifelse((S=="both") | (S=="o"), Ylowinc, NA),
+    Ymidinc = ifelse((S=="both") | (S=="o"), Ymidinc, NA)
+  )
+```
+
+```{r tab-realS, echo = FALSE}
+# Verify sample structure
+data_real %>%
+  group_by(S) %>%
+  summarise(
+    `D = 0` = sum(D == 0, na.rm = TRUE),
+    `D = 1` = sum(D == 1, na.rm = TRUE),
+    `D = NA` = sum(is.na(D)),
+    `Ycons = 0` = sum(Ycons == 0, na.rm = TRUE),
+    `Ycons = 1` = sum(Ycons == 1, na.rm = TRUE),
+    `Ycons = NA` = sum(is.na(Ycons)),
+    `Ylowinc = 0` = sum(Ylowinc == 0, na.rm = TRUE),
+    `Ylowinc = 1` = sum(Ylowinc == 1, na.rm = TRUE),
+    `Ylowinc = NA` = sum(is.na(Ylowinc)),
+    `Ymidinc = 0` = sum(Ymidinc == 0, na.rm = TRUE),
+    `Ymidinc = 1` = sum(Ymidinc == 1, na.rm = TRUE),
+    `Ymidinc = NA` = sum(is.na(Ymidinc))
+  ) %>%
+  pivot_longer(cols = -S, names_to = "Variable", values_to = "Count") %>%
+  pivot_wider(names_from = S, values_from = Count) %>%
+  kable(format = "markdown", digits = 3, caption = "Distribution of D and Y by S (Real Definition)", col.names = c("Varibale & Value", "Experimental & Observational Sample", "Experimental Sample Only", "Observational Sample Only")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+We now estimate treatment effects for each poverty outcome using the `rsv_estimate()` function.
+This function implements the RSV estimator described in **Rambachan, Singh, and Viviano (2025)**.
+
+In this vignette, we train predictive models using `ranger` library. 
+
+Key arguments in this example:
+
+- `Y`, `D`, `S_e`, `S_o`: True observed values of outcomes, treatment assignment, and sample indicators.
+- `R`: Matrix of remotely sensed predictors, including luminosity and satellite-derived features.
+- `method = "none"`: Uses all available data for both training and estimation (no cross-fitting).
+- `ml_params`: Random forest parameters:
+  - `ntree = 100`: Number of trees.
+  - `classwt_Y`: Weights for classes `Y=0` and `Y=1` for the \(\text{PRED}_Y(R)\) model.
+  - `seed`: User specified seed passed to each `ranger` function for reproducibility
+  - `cores`: Number of cores used by `ranger` for parallel training.
+- `se = TRUE`: Requests bootstrap-based standard errors with cluster resampling.
+- `se_params`: Controls bootstrap settings:
+  - `B = 1000`: Number of bootstrap replications.
+  - `clusters`: Subdistrict-level cluster identifiers.
+  - `fix_seed = TRUE`: Ensures deterministic seeding for reproducibility.
+  - `cores`: Number of cores used for parallel bootstrap computation.
+
+```{r rsv-real-Ycons, message=FALSE}
+# Consumption poverty
+Y <- data_real$Ycons
+D <- data_real$D
+R <- data_real %>% select(starts_with("luminosity"), starts_with("satellite"))
+S_e <- !is.na(D) & (rowSums(is.na(R)) == 0)
+S_o <- !is.na(Y) & (rowSums(is.na(R)) == 0)
+clusters <- data_real$clusters
+
+rsv_real_Ycons <- rsv_estimate(
+  Y = Y,
+  D = D,
+  R = R,
+  S_e = !is.na(D) & (rowSums(is.na(R)) == 0),
+  S_o = !is.na(Y) & (rowSums(is.na(R)) == 0),
+  eps = 1e-2,
+  method = "none",
+  ml_params = list(ntree = 100, classwt_Y = c(10, 1), seed=42, cores = cores),
+  se = TRUE,
+  se_params = list(B = 1000, fix_seed = TRUE, cores = cores, clusters = clusters),
+)
+print(rsv_real_Ycons)
+```
+
+```{r rsv-real-Ylowinc, message=FALSE}
+# Low income poverty
+Y <- data_real$Ylowinc
+D <- data_real$D
+R <- data_real %>% select(starts_with("luminosity"), starts_with("satellite"))
+S_e <- !is.na(D) & (rowSums(is.na(R)) == 0)
+S_o <- !is.na(Y) & (rowSums(is.na(R)) == 0)
+clusters <- data_real$clusters
+
+rsv_real_Ylowinc <- rsv_estimate(
+  Y = Y,
+  D = D,
+  R = R,
+  S_e = !is.na(D) & (rowSums(is.na(R)) == 0),
+  S_o = !is.na(Y) & (rowSums(is.na(R)) == 0),
+  eps = 1e-2,
+  method = "none",
+  ml_params = list(ntree = 100, classwt_Y = c(10, 1), seed=42, cores = cores),
+  se = TRUE,
+  se_params = list(B = 1000, fix_seed = TRUE, cores = cores, clusters = clusters),
+)
+print(rsv_real_Ylowinc)
+```
+
+```{r rsv-real-Ymidinc, message=FALSE}
+# Middle income poverty
+Y <- data_real$Ymidinc
+D <- data_real$D
+R <- data_real %>% select(starts_with("luminosity"), starts_with("satellite"))
+S_e <- !is.na(D) & (rowSums(is.na(R)) == 0)
+S_o <- !is.na(Y) & (rowSums(is.na(R)) == 0)
+clusters <- data_real$clusters
+
+rsv_real_Ymidinc <- rsv_estimate(
+  Y = Y,
+  D = D,
+  R = R,
+  S_e = S_e,
+  S_o = S_o,
+  eps = 1e-2,
+  method = "none",
+  ml_params = list(ntree = 100, classwt_Y = c(10, 1), seed=42, cores = cores),
+  se = TRUE,
+  se_params = list(B = 1000, fix_seed = TRUE, cores = cores, clusters = clusters),
+)
+print(rsv_real_Ymidinc)
+```
+
+
+## RSV Estimation with Synthetic Sample Definition
+
+We next consider a **synthetic sample definition** that differs from the real design used in the study.
+In this synthetic specification:
+
+- **Experimental sample** (\(S_e\)): Villages that were part of the randomized evaluation
+  - Experimental: Treated (2010)
+  - Experimental: Untreated (2011)
+  - Experimental: Untreated (2012)
+  
+- **Observational sample** (\(S_o\)): Villages located within the first 50% of clusters (subdistricts).
+
+```{r synth-sample-def}
+# Assign half the clusters to observational sample
+obs_clusters <- unique(data$clusters)[1:floor(length(unique(data$clusters)) / 2)]
+
+data_synth <- data %>%
+  mutate(
+    # Sample indicators
+    S_e = `Sample (Smartcard)` %in% c(
+      "Experimental: Treated (2010)", 
+      "Experimental: Untreated (2011)", 
+      "Experimental: Untreated (2012)"
+    ), # Experimental sample (has D)
+    
+    S_o = clusters %in% obs_clusters, # Synthetic observational sample
+
+    # Sample indicator for rsv_estimate (categorical)
+    S = case_when(
+      S_e & S_o ~ "both",    # Both samples
+      S_e & !S_o ~ "e",      # Experimental only
+      !S_e & S_o ~ "o"       # Observational only
+    ),
+    
+    # Treatment observed only in experimental sample
+    D = ifelse((S=="both") | (S=="e"), D, NA),
+    
+    # Outcomes observed only in observational sample
+    Ycons = ifelse((S=="both") | (S=="o"), Ycons, NA),
+    Ylowinc = ifelse((S=="both") | (S=="o"), Ylowinc, NA),
+    Ymidinc = ifelse((S=="both") | (S=="o"), Ymidinc, NA)
+  )
+```
+
+```{r tab-synthS, echo = FALSE}
+# Verify sample structure
+data_synth %>%
+  group_by(S) %>%
+  summarise(
+    `D = 0` = sum(D == 0, na.rm = TRUE),
+    `D = 1` = sum(D == 1, na.rm = TRUE),
+    `D = NA` = sum(is.na(D)),
+    `Ycons = 0` = sum(Ycons == 0, na.rm = TRUE),
+    `Ycons = 1` = sum(Ycons == 1, na.rm = TRUE),
+    `Ycons = NA` = sum(is.na(Ycons)),
+    `Ylowinc = 0` = sum(Ylowinc == 0, na.rm = TRUE),
+    `Ylowinc = 1` = sum(Ylowinc == 1, na.rm = TRUE),
+    `Ylowinc = NA` = sum(is.na(Ylowinc)),
+    `Ymidinc = 0` = sum(Ymidinc == 0, na.rm = TRUE),
+    `Ymidinc = 1` = sum(Ymidinc == 1, na.rm = TRUE),
+    `Ymidinc = NA` = sum(is.na(Ymidinc))
+  ) %>%
+  pivot_longer(cols = -S, names_to = "Variable", values_to = "Count") %>%
+  pivot_wider(names_from = S, values_from = Count) %>%
+  kable(format = "markdown", digits = 3, caption = "Distribution of D and Y by S (Synthetic Definition)", col.names = c("Varibale & Value", "Experimental & Observational Sample", "Experimental Sample Only", "Observational Sample Only", "Neither (Excluded)")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+We now estimate treatment effects for each poverty outcome under this synthetic sample definition.
+The estimation procedure is identical to that in the real-sample case, except that here the sample indicators (`S_e`, `S_o`) are synthetically generated.
+
+```{r rsv-synth, message=FALSE}
+# Consumption poverty
+Y <- data_synth$Ycons
+D <- data_synth$D
+R <- data_synth %>% select(starts_with("luminosity"), starts_with("satellite"))
+S_e <- !is.na(D) & (rowSums(is.na(R)) == 0)
+S_o <- !is.na(Y) & (rowSums(is.na(R)) == 0)
+clusters <- data_synth$clusters
+
+rsv_synth_Ycons <- rsv_estimate(
+  Y = Y,
+  D = D,
+  R = R,
+  S_e = S_e,
+  S_o = S_o,
+  eps = 1e-2,
+  method = "none",
+  ml_params = list(ntree = 100, classwt_Y = c(10, 1), seed=42, cores = cores),
+  se = TRUE,
+  se_params = list(B = 1000, fix_seed = TRUE, cores = cores, clusters = clusters),
+)
+print(rsv_synth_Ycons)
+```
+
+```{r rsv-synth-Ylowinc, message=FALSE}
+# Low income poverty
+Y <- data_synth$Ylowinc
+D <- data_synth$D
+R <- data_synth %>% select(starts_with("luminosity"), starts_with("satellite"))
+S_e <- !is.na(D) & (rowSums(is.na(R)) == 0)
+S_o <- !is.na(Y) & (rowSums(is.na(R)) == 0)
+clusters <- data_synth$clusters
+
+rsv_synth_Ylowinc <- rsv_estimate(
+  Y = Y,
+  D = D,
+  R = R,
+  S_e = S_e,
+  S_o = S_o,
+  eps = 1e-2,
+  method = "none",
+  ml_params = list(ntree = 100, classwt_Y = c(10, 1), seed=42, cores = cores),
+  se = TRUE,
+  se_params = list(B = 1000, fix_seed = TRUE, cores = cores, clusters = clusters),
+)
+print(rsv_synth_Ylowinc)
+```
+
+```{r rsv-synth-Ymidinc, message=FALSE}
+# Middle income poverty
+Y <- data_synth$Ymidinc
+D <- data_synth$D
+R <- data_synth %>% select(starts_with("luminosity"), starts_with("satellite"))
+S_e <- S_e
+S_o <- S_o
+clusters <- data_synth$clusters
+
+rsv_synth_Ymidinc <- rsv_estimate(
+  Y = Y,
+  D = D,
+  R = R,
+  S_e = !is.na(D) & (rowSums(is.na(R)) == 0),
+  S_o = !is.na(Y) & (rowSums(is.na(R)) == 0),
+  eps = 1e-2,
+  method = "none",
+  ml_params = list(ntree = 100, classwt_Y = c(10, 1), seed=42, cores = cores),
+  se = TRUE,
+  se_params = list(B = 1000, fix_seed = TRUE, cores = cores, clusters = clusters),
+)
+print(rsv_synth_Ymidinc)
+```
+
+
+## Benchmark Estimation
+
+For comparison, we estimate the treatment effect using **only** the experimental sample--i.e., villages where the treatment indicator \(D\) and outcome \(Y\) are observed. This "experimental-only" benchmark ignores the observational sample and therefore does not leverage RSVs.
+
+```{r benchmark-Ycons, message=FALSE}
+# Filter to experimental sample with observed outcomes
+data_exp_Ycons <- data %>%
+  filter(
+    !is.na(D),
+    !is.na(Ycons)
+    )
+
+# Benchmark regression with cluster-robust SEs
+benchmark_Ycons <- feols(Ycons ~ D, data = data_exp_Ycons, cluster = ~clusters)
+summary(benchmark_Ycons)
+```
+
+
+```{r benchmark-Ylowinc, message=FALSE}
+# Filter to experimental sample with observed outcomes
+data_exp_Ylowinc <- data %>%
+  filter(
+    !is.na(D),
+    !is.na(Ylowinc)
+    )
+
+# Benchmark regression with cluster-robust SEs
+benchmark_Ylowinc <- feols(Ylowinc ~ D, data = data_exp_Ylowinc, cluster = ~clusters)
+summary(benchmark_Ylowinc)
+```
+
+
+```{r benchmark-Ymidinc, message=FALSE}
+# Filter to experimental sample with observed outcomes
+data_exp_Ymidinc <- data %>%
+  filter(
+    !is.na(D),
+    !is.na(Ymidinc)
+    )
+
+# Benchmark regression with cluster-robust SEs
+benchmark_Ymidinc <- feols(Ymidinc ~ D, data = data_exp_Ymidinc, cluster = ~clusters)
+summary(benchmark_Ymidinc)
+```
+
+
+# Treatment Effect Estimates
+
+We summarize the estimated treatment effects and 90% confidence intervals for three estimators: a benchmark specification, the RSV estimator with a synthetic sample definition, and the RSV estimator with the real sample definition used in the paper.
+
+```{r compile-results}
+# Helper function to extract results
+extract <- function(model) {
+  coef_val <- coef(model)["D"]
+  se_val <- model$se["D"]
+  ci <- unname(confint(model, parm = "D", level = 0.90))
+
+  data.frame(
+    coef = coef_val,
+    se = se_val,
+    lci = ci[1],
+    uci = ci[2],
+    row.names = NULL
+  )
+}
+
+results <- rbind(
+  data.frame(outcome="Consumption", estimator = "Benchmark", extract(benchmark_Ycons)),
+  data.frame(outcome="Consumption", estimator = "RSV: Synthetic samples", extract(rsv_synth_Ycons)),
+  data.frame(outcome="Consumption", estimator = "RSV: Real samples", extract(rsv_real_Ycons)),
+  data.frame(outcome="Low Income", estimator = "Benchmark", extract(benchmark_Ylowinc)),
+  data.frame(outcome="Low Income", estimator = "RSV: Synthetic samples", extract(rsv_synth_Ylowinc)),
+  data.frame(outcome="Low Income", estimator = "RSV: Real samples", extract(rsv_real_Ylowinc)),
+  data.frame(outcome="Middle Income", estimator = "Benchmark", extract(benchmark_Ymidinc)),
+  data.frame(outcome="Middle Income", estimator = "RSV: Synthetic samples", extract(rsv_synth_Ymidinc)),
+  data.frame(outcome="Middle Income", estimator = "RSV: Real samples", extract(rsv_real_Ymidinc))
+)
+```
+
+
+```{r results-table, echo=FALSE}
+kable(
+  results, 
+  digits = 3, 
+  row.names = FALSE,
+  format = "markdown",
+  align = "llrrrr",
+  col.names = c("Outcome", "Estimator", "Coefficient", "SE", "Lower CI", "Upper CI"),
+  caption = "Treatment Effects"
+  ) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+We also visualize the point estimates with their 90% confidence intervals for each outcome.
+
+```{r plot-function}
+# Plot function
+plot_treatment_effects <- function(results, title=waiver()) {
+  results$estimator <- factor(results$estimator,levels = c(
+    "Benchmark",
+    "RSV: Synthetic samples",
+    "RSV: Real samples"
+  ))
+  
+  ggplot(results, aes(x = estimator, y = coef, shape = estimator, color = estimator)) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+    geom_errorbar(aes(ymin=lci, ymax=uci), linewidth=0.65, width = 0.45) +
+    geom_point(size = 2.5) +
+    labs(
+      title = title,
+      x = "",
+      y = TeX("Treatment effect $\\theta$"),
+      shape=NULL,
+      color=NULL
+    ) +
+    scale_color_manual(values = c(
+      "Benchmark" = "black",
+      "RSV: Synthetic samples" = "#8DB1CE",
+      "RSV: Real samples" = "#43739D"
+    )) +
+    scale_shape_manual(values = c(
+      "Benchmark" = 17,
+      "RSV: Synthetic samples" = 15,
+      "RSV: Real samples" = 19
+    )) +
+    scale_x_discrete(labels = ~ str_wrap(as.character(.x), 5, whitespace_only=F)) +
+    scale_y_continuous(limits = c(-0.15, 0.01), minor_breaks = seq(-2,2,0.01)) +
+    theme_bw() +
+    theme(
+      legend.position="none",
+      panel.grid.major.x=element_blank(),
+      panel.grid.minor.x=element_blank(),
+      panel.grid.major.y=element_line(linewidth=0.3),
+      panel.grid.minor.y=element_line(linewidth=0.1),
+      text = element_text(size=14, family="Times", color="black"),
+      axis.title.y = element_text(size=14, family="Times", color="black"),
+      axis.title.x = element_blank(),
+      axis.text = element_text(size=12, family="Times", color="black"),
+    )
+}
+```
+
+```{r plot-Ycons, fig.width=3, fig.height=3}
+results %>% 
+  filter(outcome=="Consumption") %>%
+  plot_treatment_effects(title="Consumption")
+```
+
+```{r plot-Ylowinc, fig.width=3, fig.height=3}
+results %>% 
+  filter(outcome=="Low Income") %>%
+  plot_treatment_effects(title="Low Income")
+```
+
+```{r plot-Ymidinc, fig.width=3, fig.height=3}
+results %>% 
+  filter(outcome=="Middle Income") %>%
+  plot_treatment_effects(title="Middle Income")
+```
+
+
+<!-- # Denominator (Relevance) -->
+
+<!-- The RSV estimator's denominator (relevance) summarizes how informative the remotely sensed variables are for predicting the outcome. We report the point estimate, standard error, and the 90% CI. -->
+
+<!-- ```{r compile-denominator-results} -->
+<!-- # Helper function to extract results -->
+<!-- extract_denominator <- function(model) { -->
+<!--   level = 0.90 -->
+<!--   alpha = 1 - level -->
+<!--   coef_val <- model$denominator -->
+<!--   se_val <- model$denominator_se -->
+<!--   ci <- c( -->
+<!--     coef_val - qnorm(1 - alpha/2) * se_val,  -->
+<!--     coef_val + qnorm(1 - alpha/2) * se_val -->
+<!--   ) -->
+
+<!--   data.frame( -->
+<!--     coef = coef_val, -->
+<!--     se = se_val, -->
+<!--     lci = ci[1], -->
+<!--     uci = ci[2], -->
+<!--     row.names = NULL -->
+<!--   ) -->
+<!-- } -->
+
+<!-- results_denominator <- rbind( -->
+<!--   data.frame(outcome = "Consumption", estimator = "RSV: Synthetic samples", extract_denominator(rsv_synth_Ycons)), -->
+<!--   data.frame(outcome = "Consumption", estimator = "RSV: Real samples", extract_denominator(rsv_real_Ycons)), -->
+<!--   data.frame(outcome = "Low Income", estimator = "RSV: Synthetic samples", extract_denominator(rsv_synth_Ylowinc)), -->
+<!--   data.frame(outcome = "Low Income", estimator = "RSV: Real samples", extract_denominator(rsv_real_Ylowinc)), -->
+<!--   data.frame(outcome = "Middle Income", estimator = "RSV: Synthetic samples", extract_denominator(rsv_synth_Ymidinc)), -->
+<!--   data.frame(outcome = "Middle Income", estimator = "RSV: Real samples", extract_denominator(rsv_real_Ymidinc)) -->
+<!-- ) -->
+<!-- ``` -->
+
+
+<!-- ```{r results-denominator-table, echo = FALSE} -->
+<!-- # Consumption poverty -->
+<!-- kable( -->
+<!--   results_denominator,  -->
+<!--   digits = 3,  -->
+<!--   row.names = FALSE, -->
+<!--   format = "markdown", -->
+<!--   align = "llrrrr", -->
+<!--   col.names = c("Outcome", "Estimator", "Coefficient", "SE", "Lower CI", "Upper CI"), -->
+<!--   caption = "Denominator (Relevance)" -->
+<!--   ) %>% -->
+<!--   kable_styling(bootstrap_options = c("striped", "hover")) -->
+<!-- ``` -->
+
+
+<!-- We also visualize the denominator estimates with their 90% confidence intervals for the synthetic and real sample definitions. -->
+
+<!-- ```{r plot-denominator-function} -->
+<!-- # Plot function -->
+<!-- plot_denominator <- function(results, title=waiver()) { -->
+<!--   results$estimator <- factor(results$estimator,levels = c( -->
+<!--     "RSV: Synthetic samples", -->
+<!--     "RSV: Real samples" -->
+<!--   )) -->
+
+<!--   ggplot(results, aes(x = estimator, y = coef, shape = estimator, color = estimator)) + -->
+<!--     geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") + -->
+<!--     geom_errorbar(aes(ymin=lci, ymax=uci), linewidth=0.65, width = 0.28) + -->
+<!--     geom_point(size = 2.5) + -->
+<!--     labs( -->
+<!--       title = title, -->
+<!--       x = "", -->
+<!--       y = "Denominator (Relevance)", -->
+<!--       shape=NULL, -->
+<!--       color=NULL -->
+<!--     ) + -->
+<!--     scale_color_manual(values = c( -->
+<!--       "RSV: Synthetic samples" = "#8DB1CE", -->
+<!--       "RSV: Real samples" = "#43739D" -->
+<!--     )) + -->
+<!--     scale_shape_manual(values = c( -->
+<!--       "RSV: Synthetic samples" = 15, -->
+<!--       "RSV: Real samples" = 19 -->
+<!--     )) + -->
+<!--     scale_x_discrete(labels = ~ str_wrap(as.character(.x), 5, whitespace_only=F)) + -->
+<!--     scale_y_continuous(limits = c(0,6.1), minor_breaks = seq(-2,10,0.25)) + -->
+<!--     theme_bw() + -->
+<!--     theme( -->
+<!--       legend.position="none", -->
+<!--       panel.grid.major.x=element_blank(), -->
+<!--       panel.grid.minor.x=element_blank(), -->
+<!--       panel.grid.major.y=element_line(linewidth=0.3), -->
+<!--       panel.grid.minor.y=element_line(linewidth=0.1), -->
+<!--       text = element_text(size=14, family="Times", color="black"), -->
+<!--       axis.title.y = element_text(size=14, family="Times", color="black"), -->
+<!--       axis.title.x = element_blank(), -->
+<!--       axis.text = element_text(size=12, family="Times", color="black"), -->
+<!--     ) -->
+<!-- } -->
+<!-- ``` -->
+
+<!-- ```{r plot-denominator-Ycons, fig.width=3, fig.height=3} -->
+<!-- results_denominator %>%  -->
+<!--   filter(outcome=="Consumption") %>% -->
+<!--   plot_denominator(title="Consumption") -->
+<!-- ``` -->
+
+<!-- ```{r plot-denominator-Ylowinc, fig.width=3, fig.height=3} -->
+<!-- results_denominator %>%  -->
+<!--   filter(outcome=="Low Income") %>% -->
+<!--   plot_denominator(title="Low Income") -->
+<!-- ``` -->
+
+<!-- ```{r plot-denominator-Ymidinc, fig.width=3, fig.height=3} -->
+<!-- results_denominator %>%  -->
+<!--   filter(outcome=="Middle Income") %>% -->
+<!--   plot_denominator(title="Middle Income") -->
+<!-- ``` -->
+
+
+# References
+
+Muralidharan, K., Niehaus, P., and Sukhtankar, S. (2017). "General Equilibrium Effects of (Improving) Public Employment Programs: Experimental Evidence from India." *NBER Working Paper 23838*.
+
+Rambachan, A., Singh, R., and Viviano, D. (2025). "Program Evaluation with Remotely Sensed Outcomes." *arXiv:2411.10959*.
+
+# Session Info
+
+```{r session-info}
+sessionInfo()
+```

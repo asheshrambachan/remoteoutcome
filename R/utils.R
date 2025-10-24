@@ -2,50 +2,6 @@
 # Common Utilities
 # =============================================================================
 
-#' Convert binary numeric vector to logical
-#'
-#' Converts a binary numeric vector (0/1) to a logical vector (TRUE/FALSE).
-#' If the input is already logical, it is returned unchanged.
-#'
-#' @param x A numeric or logical vector. If numeric, must contain only 0 and 1.
-#'
-#' @return A logical vector.
-#'
-#' @keywords internal
-to_logical <- function(x) {
-  if (is.logical(x)) {
-    return(x)
-  } else {
-    vals <- unique(x)
-    if (all(vals %in% c(0, 1))) {
-      return(as.logical(x))
-    } else {
-      stop("to_logical: expected values 0/1 or TRUE/FALSE; got: ", paste(vals, collapse = ", "))
-    }
-  }
-}
-
-
-#' Cluster-level bootstrap resampling
-#'
-#' Performs cluster-level bootstrap resampling by sampling clusters with replacement
-#' and returning all observations within the sampled clusters.
-#'
-#' @param data A data frame containing the data to resample.
-#' @param cluster_var Character string naming the cluster variable in \code{data}.
-#'   Default is "clusters".
-#'
-#' @return A data frame with the same structure as \code{data}, containing the
-#'   resampled observations.
-#'
-#' @keywords internal
-cluster_sample <- function(data, cluster_var = "clusters") {
-  ids <- unique(data[[cluster_var]])
-  sampled <- sample(ids, length(ids), replace = TRUE)
-  data[data[[cluster_var]] %in% sampled, , drop = FALSE]
-}
-
-
 #' Generate synthetic RSV data
 #'
 #' Generates synthetic data for testing and simulating RSV estimation methods.
@@ -105,68 +61,81 @@ generate_rsv_data <- function(n, tau, X, D, Y) {
   list(X = X, D = D, Y = Y, Se = Se, So = So)
 }
 
+# #' Create experimental/observational indicators and mask variables
+# #'
+# #' Converts a dataset with a smartcard sample indicator into:
+# #' - `S`: sample membership ("e", "o", "both")
+# #' - `D`: treatment observed only for experimental/both samples
+# #' - outcomes observed only for observational/both samples
+# #'
+# #' @param data A data.frame  from 
+# #'
+# #' @return The input `data` with added/modified columns `S`, `D`, and outcomes.
+# #' 
+# #' @export
+# #' @importFrom dplyr mutate case_when
+# #' @importFrom rlang .data
+# generate_real_data <- function(data){
+#   data %>%
+#   dplyr::mutate(
+#     # Sample indicator
+#     S = dplyr::case_when(
+#       `Sample (Smartcard)` == "Experimental: Treated (2010)" ~ "e", # Experimental only
+#       `Sample (Smartcard)` == "Experimental: Untreated (2011)" ~ "both",  # Both samples
+#       `Sample (Smartcard)` == "Experimental: Untreated (2012)" ~ "e", # Experimental only
+#       `Sample (Smartcard)` == "Observational (N/A)" ~ "o" # Observational only
+#     ),
+    
+#     # Treatment observed only in experimental sample
+#     D = ifelse((S=="both") | (S=="e"), D, NA),
+    
+#     # Outcomes observed only in observational sample
+#     Ycons = ifelse((S=="both") | (S=="o"), Ycons, NA),
+#     Ylowinc = ifelse((S=="both") | (S=="o"), Ylowinc, NA),
+#     Ymidinc = ifelse((S=="both") | (S=="o"), Ymidinc, NA)
+#   )
+# }
 
-#' Cross-validation wrapper for RSV estimation
-#'
-#' Performs k-fold cross-validation for any estimation function that accepts
-#' train and test data splits.
-#'
-#' @param fun Function to apply. Must accept arguments with \code{_train} and
-#'   \code{_test} suffixes.
-#' @param nfold Number of folds for cross-validation. Default is 5.
-#' @param ... Additional arguments passed to \code{fun}. Must include at least
-#'   a \code{D} argument to determine sample size.
-#'
-#' @return A list containing:
-#' \describe{
-#'   \item{coef_cv}{Cross-validated coefficient estimate}
-#'   \item{out}{List of results from each fold}
-#' }
-#'
-#' @export
-#'
-#' @examples
-#' \dontrun{
-#' # Example with RSV estimator
-#' cv_results <- cv_rsv(rsv_estimate, nfold = 5,
-#'                      X = X, D = D, Y = Y, Se = Se, So = So)
-#' }
-cv_rsv <- function(fun, nfold = 5, ...) {
-  args <- list(...)
+# #' Create experimental/observational indicators and mask variables
+# #'
+# #' Converts a dataset with a smartcard sample indicator into:
+# #' - `S`: sample membership ("e", "o", "both")
+# #' - `D`: treatment observed only for experimental/both samples
+# #' - outcomes observed only for observational/both samples
+# #'
+# #' @param data A data.frame  from 
+# #'
+# #' @return The input `data` with added/modified columns `S`, `D`, and outcomes.
+# #' 
+# #' @export
+# #' @importFrom dplyr mutate case_when
+# #' @importFrom rlang .data
+# generate_synth_data <- function(data){
+#   dplyr::mutate(
+#     data,
+    
+#     # Sample indicators
+#     S_e = `Sample (Smartcard)` %in% c(
+#       "Experimental: Treated (2010)", 
+#       "Experimental: Untreated (2011)", 
+#       "Experimental: Untreated (2012)"
+#     ), # Experimental sample (has D)
+    
+#     S_o = clusters %in% obs_clusters, # Synthetic observational sample
 
-  if (!"D" %in% names(args)) stop("cv_rsv: 'D' required")
-
-  n <- length(args$D)
-  folds <- sample.int(nfold, n, replace = TRUE)
-  out <- vector("list", nfold)
-
-  for (k in seq_len(nfold)) {
-    train_id <- folds != k
-    test_id <- folds == k
-
-    train_args <- lapply(args, function(el) {
-      if (is.matrix(el) || is.data.frame(el)) {
-        el[train_id, , drop = FALSE]
-      } else {
-        el[train_id]
-      }
-    })
-    test_args <- lapply(args, function(el) {
-      if (is.matrix(el) || is.data.frame(el)) {
-        el[test_id, , drop = FALSE]
-      } else {
-        el[test_id]
-      }
-    })
-
-    names(train_args) <- paste0(names(train_args), "_train")
-    names(test_args)  <- paste0(names(test_args),  "_test")
-
-    all_args <- c(train_args, test_args)
-    call_args <- all_args[names(all_args) %in% names(formals(fun))]
-    out[[k]] <- do.call(fun, call_args)
-  }
-
-  coef_cv <- mean(sapply(out, function(x) x$coef), na.rm = TRUE)
-  list(coef_cv = coef_cv, out = out)
-}
+#     # Sample indicator for rsv_estimate (categorical)
+#     S = case_when(
+#       S_e & S_o ~ "both",    # Both samples
+#       S_e & !S_o ~ "e",      # Experimental only
+#       !S_e & S_o ~ "o"       # Observational only
+#     ),
+    
+#     # Treatment observed only in experimental sample
+#     D = ifelse((S=="both") | (S=="e"), D, NA),
+    
+#     # Outcomes observed only in observational sample
+#     Ycons = ifelse((S=="both") | (S=="o"), Ycons, NA),
+#     Ylowinc = ifelse((S=="both") | (S=="o"), Ylowinc, NA),
+#     Ymidinc = ifelse((S=="both") | (S=="o"), Ymidinc, NA)
+#   )
+# }

@@ -7,97 +7,81 @@
 rsv_estimate(
   Y = NULL,
   D = NULL,
-  S = NULL,
+  S_e = NULL,
+  S_o = NULL,
   R = NULL,
   pred_Y = NULL,
   pred_D = NULL,
   pred_S_e = NULL,
   pred_S_o = NULL,
+  theta_init = NULL,
+  eps = 0.01,
   method = c("split", "crossfit", "none"),
-  nfolds = 5,
-  split_ratio = 0.5,
   ml_params = list(),
   se = TRUE,
-  clusters = NULL,
-  B = 1000,
-  alpha = 0.05,
-  eps = 1e-06,
-  seed = NULL
+  se_params = list()
 )
 }
 \arguments{
-\item{Y}{Outcome variable (binary, NA where not observed). Required if
-predictions are not provided.}
+\item{Y}{Outcome variable (binary, \code{NA} where not observed).}
 
-\item{D}{Treatment indicator (binary, NA where not observed). Required if
-predictions are not provided.}
+\item{D}{Treatment indicator (binary, \code{NA} where not observed).}
 
-\item{S}{Sample indicator. Can be:
-\describe{
-  \item{"e"}{Experimental sample only (observe D, R)}
-  \item{"o"}{Observational sample only (observe Y, R)}
-  \item{"both"}{Both samples (observe Y, D, R)}
-}}
+\item{S_e}{Experimental sample indicator (0 or 1).}
+
+\item{S_o}{Observational sample indicator (0 or 1).}
 
 \item{R}{Remotely sensed variable. Required if predictions are not provided.}
 
-\item{pred_Y}{(Optional) Predicted E[Y | R, S_o = 1]. If provided, other
-predictions must also be provided.}
+\item{pred_Y}{(Optional) Predicted \eqn{E[Y \mid R, S_o = 1]}. If provided, other predictions must also be provided.}
 
-\item{pred_D}{(Optional) Predicted E[D | R, S_e = 1].}
+\item{pred_D}{(Optional) Predicted \eqn{E[D \mid R, S_e = 1]}.}
 
-\item{pred_S_e}{(Optional) Predicted P(S_e = 1 | R).}
+\item{pred_S_e}{(Optional) Predicted \eqn{P(S_e = 1 \mid R)}.}
 
-\item{pred_S_o}{(Optional) Predicted P(S_o = 1 | R).}
+\item{pred_S_o}{(Optional) Predicted \eqn{P(S_o = 1 \mid R)}.}
 
-\item{method}{Prediction fitting method. Options:
+\item{theta_init}{Initial estimate of the treatment effect on the train data.}
+
+\item{eps}{Small constant for numerical stability of \code{sigma2} estimate (default \code{1e-2}).}
+
+\item{method}{Prediction fitting method; one of \code{"split"} (default), \code{"crossfit"}, or \code{"none"}.
+\code{"split"} = simple sample split; \code{"crossfit"} = K-fold cross-fitting; \code{"none"} = use all data for training/testing.}
+
+\item{ml_params}{List of parameters for random forest:
 \describe{
-  \item{"split"}{Simple sample split (default)}
-  \item{"crossfit"}{K-fold cross-fitting}
-  \item{"none"}{No sample splitting (use all data for training and testing)}
+  \item{ntree}{Number of trees}
+  \item{classwt_Y}{Class weights for \code{pred_Y} model; default \code{c(10, 1)})}
+  \item{seed}{User specified seed passed to each \code{ranger} function for reproducibility; default \code{NULL}}
+  \item{cores}{Number of cores used by `ranger` for parallel training; default \code{1}}
+  \item{nfolds}{Number of folds for cross-fitting (default \code{5}).}
+  \item{train_ratio}{Proportion for training in sample split (default \code{0.5}).}
 }}
 
-\item{nfolds}{Number of folds for cross-fitting. Default is 5. Only used if
-\code{method = "crossfit"}.}
+\item{se}{Logical; compute standard errors via bootstrap? (default \code{TRUE}).}
 
-\item{split_ratio}{Proportion of data to use for training in sample split.
-Default is 0.5. Only used if \code{method = "split"}.}
-
-\item{ml_params}{List of parameters for random forest. Supported parameters:
+\item{se_params}{List of bootstrap parameters:
 \describe{
-  \item{ntree}{Number of trees. Default is 500.}
-  \item{classwt_Y}{Class weights for outcome model. Default is c(10, 1).}
-}
-Additional parameters will be passed to \code{randomForest::randomForest}.}
-
-\item{se}{Logical. Compute standard errors via bootstrap? Default is TRUE.}
-
-\item{clusters}{Cluster identifiers for clustered bootstrap. If NULL,
-individual-level bootstrap is used.}
-
-\item{B}{Number of bootstrap replications. Default is 1000.}
-
-\item{alpha}{Significance level for confidence interval. Default is 0.05
-for 95% CI. Use 0.10 for 90% CI, 0.01 for 99% CI, etc.}
-
-\item{eps}{Small constant for numerical stability. Default is 1e-6.}
-
-\item{seed}{Random seed for reproducibility in sample splitting/cross-fitting.}
+  \item{B}{Number of bootstrap replications (default \code{1000})}
+  \item{fix_seed}{If \code{TRUE}, deterministic seeding is used with `set.seed(b)` for the *b*‑th replication (default \code{FALSE})}
+  \item{cores}{Number of cores for bootstrap replications (default \code{1}).}
+  \item{clusters}{Clusters for the bootstrap. If \code{NULL}, uses individual-level bootstrap}
+}}
 }
 \value{
-An object of class "rsv" containing:
-  \describe{
-    \item{coef}{Treatment effect estimate}
-    \item{se}{Standard error (if \code{se = TRUE})}
-    \item{ci_lower}{Lower bound of confidence interval (if \code{se = TRUE})}
-    \item{ci_upper}{Upper bound of confidence interval (if \code{se = TRUE})}
-    \item{alpha}{Significance level used for CI (if \code{se = TRUE})}
-    \item{n_obs}{Sample size in observational sample}
-    \item{n_exp}{Sample size in experimental sample}
-    \item{n_both}{Sample size in both samples}
-    \item{method}{Prediction fitting method used}
-    \item{call}{The matched call}
-  }
+A list of class \code{"rsv"} with components:
+\describe{
+  \item{coef}{Treatment effect estimate.}
+  \item{se}{Standard error (if \code{se = TRUE}).}
+  \item{denominator_se}{Standard error of the denominator of the treatment effect (if \code{se = TRUE})}
+  \item{n_obs}{Sample size in observational sample.}
+  \item{n_exp}{Sample size in experimental sample.}
+  \item{n_both}{Sample size in both samples.}
+  \item{numerator}{Numerator of the treatment effect estimate}
+  \item{denominator}{Denominator of the treatment effect estimate}
+  \item{method}{Prediction fitting method used.}
+  \item{call}{The matched call.}
+}
 }
 \description{
 Estimates treatment effects using remotely sensed variables (RSVs) following
@@ -107,10 +91,8 @@ text for binary outcomes without pretreatment covariates.
 \details{
 The function supports two interfaces:
 \enumerate{
-  \item Provide fitted predictions \code{pred_Y}, \code{pred_D}, \code{pred_S_e},
-        \code{pred_S_o} directly
-  \item Provide raw data \code{(Y, D, S, R)} and the function fits predictions
-        using random forests
+  \item Provide fitted predictions \code{pred_Y}, \code{pred_D}, \code{pred_S_e}, \code{pred_S_o} directly.
+  \item Provide raw data \code{(Y, D, S, R)} and the function fits predictions using random forests.
 }
 
 The function also supports sample splitting and K-fold cross-fitting for
@@ -119,23 +101,24 @@ prediction fitting.
 \examples{
 \dontrun{
 # Example 1: User provides raw data with sample splitting
-result <- rsv_estimate(Y = Y, D = D, S = S, R = R,
+result <- rsv_estimate(Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
                        method = "split", se = TRUE)
 
 # Example 2: User provides raw data with cross-fitting
-result <- rsv_estimate(Y = Y, D = D, S = S, R = R,
+result <- rsv_estimate(Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
                        method = "crossfit", nfolds = 5, se = TRUE)
 
 # Example 3: User provides raw data with custom ML parameters
-result <- rsv_estimate(Y = Y, D = D, S = S, R = R,
+result <- rsv_estimate(Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
                        method = "crossfit",
                        ml_params = list(ntree = 1000, classwt_Y = c(5, 1)),
                        se = TRUE)
 
 # Example 4: User provides fitted predictions
-result <- rsv_estimate(Y = Y, D = D, S = S,
+result <- rsv_estimate(Y = Y, D = D, S_e = S_e, S_o = S_o,
                        pred_Y = pred_Y, pred_D = pred_D,
                        pred_S_e = pred_S_e, pred_S_o = pred_S_o,
                        se = TRUE)
 }
+
 }

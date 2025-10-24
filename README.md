@@ -17,108 +17,115 @@ This package implements the nonparametric methods developed in:
 - Supports flexible sample structures (experimental-only, observational-only, or both)
 - Implements sample splitting and K-fold cross-fitting for prediction fitting
 
-## Installation
+## Installation from source
 
 ```r
-# Install devtools if not already installed
-if (!require("devtools")) install.packages("devtools")
-
-# Install remoteoutcome package from source
-devtools::install_local("path/to/remoteoutcome")
+package_path <- "path/to/remoteoutcome"
+setwd(package_path)
+source("build_packages.R")
 ```
 
-### Dependencies
-
-The package requires:
-- R >= 4.0.0
-- dplyr >= 1.0.0
-- randomForest >= 4.6-14
-- boot >= 1.3-28
-- fixest >= 0.10.0
-
 ## Quick Start
+
+#### Load sample data
+
+```r
+library(dplyr)
+library(remoteoutcome)
+
+
+# Example data: data_real (included in package)
+Y <- data_real$Ycons # binary outcome
+D <- data_real$D # binary treatment
+R <- data_real %>% select(starts_with("luminosity"), starts_with("satellite")) # remotely sensed variable
+S_e <- !is.na(D) & (rowSums(is.na(R)) == 0) # experimental sample indicator (Observe D, R)
+S_o <- !is.na(Y) & (rowSums(is.na(R)) == 0) #  observational sample indicator (Observe Y, R)
+clusters <- data_real$clusters # Subdistrict-level cluster identifiers
+```
 
 ### Basic Example
 
 ```r
-library(remoteoutcome)
-
-# Example data structure:
-# Y: binary outcome (NA for experimental-only observations)
-# D: binary treatment (NA for observational-only observations)
-# S: sample indicator ("e" = experimental, "o" = observational, "both" = both)
-# R: remotely sensed variable (e.g., satellite image features)
-
-# Estimate treatment effect with 5-fold cross-fitting
+# Estimate treatment effect
 result <- rsv_estimate(
   Y = Y,
   D = D,
-  S = S,
+  S_e = S_e,
+  S_o = S_o,
   R = R,
-  method = "crossfit",
-  nfolds = 5,
+  eps = 1e-2,
+  method = "none",
+  ml_params = list(       # Customize random forest parameters:
+    ntree = 100,          #   Number of trees
+    classwt_Y = c(10, 1), #   Class weights for PRED_Y model
+    seed = 42,            #   A random seed for each RF for reproducibility
+    cores = 7             #   Number of cores used for training
+  ),
   se = TRUE,
-  alpha = 0.05  # 95% confidence interval
+  se_params = list(       # Customize cluster-bootstrap standard errors:
+    B = 1000,             #   Number of bootstrap replications
+    clusters = clusters,  #   Cluster identifiers for clustered sampling, if not provided, use individual-level bootstrap
+    fix_seed = TRUE,      #   Enables deterministic seeding for reproducibility 
+    cores = 7             #   Number of cores for bootstrap replications
+    )
 )
 
-# View results
-print(result)
+summary(result)
 #> RSV Treatment Effect Estimate
 #> ==============================
-#>
-#> Coefficient: 0.1234 (SE: 0.0456)
-#> 95% CI: [0.0340, 0.2128]
-#>
+#> 
+#> Coefficient:
+#>   Estimate Std.Error t.value Pr..t.
+#> D -0.01351   0.01197  -1.129  0.259
+#> 
 #> Sample sizes:
-#>   Experimental: 1000
-#>   Observational: 800
+#>   Experimental: 6055
+#>   Observational: 5186
+#>   Both: 2929
+#> 
+#> Prediction fitting method: none
+#> 
+#> Call:
+#> rsv_estimate(Y = Y, D = D, S_e = S_e, S_o = S_o, R = R, eps = 0.01, 
+#>     method = "none", ml_params = list(ntree = 100, classwt_Y = c(10, 
+#>         1), seed = 42, cores = 7), se = TRUE, se_params = list(B = 1000, 
+#>         clusters = clusters, fix_seed = TRUE, cores = 7))
 
-summary(result)
-
-# Extract coefficient
-coef(result)
-
-# Extract confidence interval
-confint(result)
+# 90% confidence interval
+confint(result, level = 0.90)
+#>         5.0 %      95.0 %
+#> D -0.03319573 0.006176239
 ```
 
-## Sample Indicator Options
-
-The package handles three types of sample membership (Remark 3 in the paper):
-
-| Sample Type | Code | Observations |
-|------------|------|--------------|
-| Experimental only | `S = "e"` | Observe D, R (not Y) |
-| Observational only | `S = "o"` | Observe Y, R (not D) |
-| Both samples | `S = "both"` | Observe Y, D, R |
-
-**Example:**
-```r
-# Create sample indicator
-S <- rep("e", 1000)  # Experimental sample
-S[501:800] <- "o"    # Observational sample
-S[801:1000] <- "both"  # In both samples
-
-# Y is NA for experimental-only observations
-Y[S == "e"] <- NA
-
-# D is NA for observational-only observations
-D[S == "o"] <- NA
-```
 
 ## Prediction Fitting Methods
 
-### 1. Cross-Fitting (Recommended)
+### 1. No Splitting
 
-K-fold cross-fitting splits data into K folds, fits predictions on K-1 folds, and predicts on the held-out fold.
+"Sample splitting may be eliminated under complexity restrictions that tolerate simple machine learning procedures. See e.g. Chernozhukov et al. (2020) for a recent summary."
+
+Uses all data for both training and testing (not recommended due to overfitting).
 
 ```r
 result <- rsv_estimate(
-  Y = Y, D = D, S = S, R = R,
-  method = "crossfit",
-  nfolds = 5,
-  se = TRUE
+  Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
+  method = "none",
+  ml_params = list(seed = 42, cores = 7),
+  se_params = list(fix_seed = TRUE, clusters = clusters, cores = 7)
 )
+
+print(result)
+#> RSV Treatment Effect Estimate
+#> ==============================
+#> 
+#> Coefficient: -0.0135 (SE: 0.0120)
+#> 
+#> Sample sizes:
+#>   Experimental: 6055
+#>   Observational: 5186
+#>   Both: 2929
+#> 
+#> Method: none
 ```
 
 ### 2. Sample Splitting
@@ -127,189 +134,105 @@ Randomly splits data into training and test sets.
 
 ```r
 result <- rsv_estimate(
-  Y = Y, D = D, S = S, R = R,
+  Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
   method = "split",
-  split_ratio = 0.5,  # 50% train, 50% test
-  se = TRUE
+  ml_params = list(train_ratio = 0.5, seed = 42, cores = 7),
+  se_params = list(fix_seed = TRUE, clusters = clusters)
 )
+
+print(result)
+#> RSV Treatment Effect Estimate
+#> ==============================
+#> 
+#> Coefficient: -0.1086 (SE: 0.0959)
+#> 
+#> Sample sizes:
+#>   Experimental: 3032
+#>   Observational: 2575
+#>   Both: 1451
+#> 
+#> Method: split
 ```
 
-### 3. No Splitting
+### 3. Cross-Fitting (Recommended)
 
-Uses all data for both training and testing (not recommended due to overfitting).
+K-fold cross-fitting splits data into K folds, fits predictions on K-1 folds, and predicts on the held-out fold.
 
 ```r
 result <- rsv_estimate(
-  Y = Y, D = D, S = S, R = R,
-  method = "none",
-  se = TRUE
-)
-```
-
-## Customization
-
-### Custom Machine Learning Parameters
-
-Customize random forest parameters via `ml_params`:
-
-```r
-result <- rsv_estimate(
-  Y = Y, D = D, S = S, R = R,
+  Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
   method = "crossfit",
-  ml_params = list(
-    ntree = 1000,        # Number of trees (default: 500)
-    classwt_Y = c(5, 1)  # Class weights for outcome model (default: c(10, 1))
-  ),
-  se = TRUE
+  ml_params = list(nfold = 5, seed = 42, cores = 7),
+  se_params = list(fix_seed = TRUE, clusters = clusters)
 )
+
+print(result)
+#> RSV Treatment Effect Estimate
+#> ==============================
+#> 
+#> Coefficient: -0.1082
+#> 
+#> Method: crossfit
 ```
 
-### Custom Confidence Levels
 
-Specify confidence level via `alpha` parameter:
-
-```r
-# 90% confidence interval
-result <- rsv_estimate(Y = Y, D = D, S = S, R = R, alpha = 0.10)
-
-# 95% confidence interval (default)
-result <- rsv_estimate(Y = Y, D = D, S = S, R = R, alpha = 0.05)
-
-# 99% confidence interval
-result <- rsv_estimate(Y = Y, D = D, S = S, R = R, alpha = 0.01)
-```
-
-### Clustered Standard Errors
-
-For clustered data, provide cluster identifiers:
-
-```r
-result <- rsv_estimate(
-  Y = Y, D = D, S = S, R = R,
-  method = "crossfit",
-  clusters = cluster_id,  # Vector of cluster identifiers
-  B = 1000,              # Number of bootstrap replications
-  se = TRUE
-)
-```
 
 ## User-Provided Predictions
 
 If you have your own fitted predictions, provide them directly:
 
 ```r
-# Fit your own models to obtain:
-# pred_Y: E[Y | R, S_o = 1]
-# pred_D: E[D | R, S_e = 1]
-# pred_S_e: P(S_e = 1 | R)
-# pred_S_o: P(S_o = 1 | R)
-
+# Fit your own models to obtain predictions. 
+# Example data: pred_real_Ycons (included in package)
 result <- rsv_estimate(
-  Y = Y,
-  D = D,
-  S = S,
-  pred_Y = pred_Y,
-  pred_D = pred_D,
-  pred_S_e = pred_S_e,
-  pred_S_o = pred_S_o,
-  se = TRUE
-)
-```
-
-## Reproducibility
-
-Set a random seed for reproducibility in sample splitting/cross-fitting:
-
-```r
-result <- rsv_estimate(
-  Y = Y, D = D, S = S, R = R,
-  method = "crossfit",
-  seed = 12345,
-  se = TRUE
-)
-```
-
-## Complete Example
-
-```r
-library(remoteoutcome)
-
-# Generate synthetic data
-set.seed(123)
-n <- 1000
-
-# Remotely sensed variable
-R <- rnorm(n)
-
-# True outcome (latent)
-Y_latent <- rbinom(n, 1, plogis(0.5 * R))
-
-# Treatment
-D <- rbinom(n, 1, plogis(-0.3 * R))
-
-# Sample indicator
-S <- sample(c("e", "o", "both"), n, replace = TRUE, prob = c(0.4, 0.4, 0.2))
-
-# Observed outcome (NA for experimental-only)
-Y <- Y_latent
-Y[S == "e"] <- NA
-
-# Observed treatment (NA for observational-only)
-D_obs <- D
-D_obs[S == "o"] <- NA
-
-# Estimate treatment effect
-result <- rsv_estimate(
-  Y = Y,
-  D = D_obs,
-  S = S,
-  R = R,
-  method = "crossfit",
-  nfolds = 5,
-  ml_params = list(ntree = 500, classwt_Y = c(10, 1)),
+  Y = pred_real_Ycons$Y,
+  D = pred_real_Ycons$D,
+  S_e = pred_real_Ycons$S_e,
+  S_o = pred_real_Ycons$S_o,
+  pred_Y = pred_real_Ycons$pred_Y,
+  pred_D = pred_real_Ycons$pred_D,
+  pred_S_e = pred_real_Ycons$pred_S_e,
+  pred_S_o = pred_real_Ycons$pred_S_o,
   se = TRUE,
-  clusters = NULL,
-  B = 1000,
-  alpha = 0.05,
-  seed = 456
+  se_params = list(B = 1000, fix_seed = TRUE, cores = 7, clusters = pred_real_Ycons$clusters),
 )
 
-# View results
 print(result)
-summary(result)
-coef(result)
-confint(result)
+#> RSV Treatment Effect Estimate
+#> ==============================
+#> 
+#> Coefficient: -0.0127 (SE: 0.0095)
+#> 
+#> Sample sizes:
+#>   Experimental: 6055
+#>   Observational: 5186
+#>   Both: 2929
+#> 
+#> Method: none
 ```
-
-## Functions
-
-### Main Functions
-
-- `rsv_estimate()`: Main estimation function
-- `cv_rsv()`: Cross-validation wrapper
-- `generate_rsv_data()`: Generate synthetic data for testing
-
-### S3 Methods
-
-- `print.rsv()`: Print results
-- `summary.rsv()`: Detailed summary with inference
-- `coef.rsv()`: Extract coefficient
-- `vcov.rsv()`: Extract variance-covariance matrix
-- `confint.rsv()`: Extract confidence interval
 
 ## Vignettes
 
-The package includes detailed vignettes demonstrating practical applications:
+The package includes detailed vignettes demonstrating how to use the `remoteoutcome` package to estimate treatment effects when outcomes are measured using remotely sensed variables (RSVs). Specifically, both vignettes replicate **Figure 7**  of *Rambachan, Singh, and Viviano (2025)*, with only minor differences arising from implementation updates that do **not** affect the estimator or any of its statistical properties. The updates are as follows:
 
-- **Poverty Application** (`vignette("poverty-application", package = "remoteoutcome")`): Replicates the poverty analysis from Rambachan, Singh, and Viviano (2025) using data from an anti-poverty program in India. Shows how to:
-  - Estimate treatment effects with real and synthetic sample definitions
-  - Use satellite imagery features as remotely sensed variables
-  - Compare RSV estimates with traditional benchmark approaches
-  - Create publication-quality visualizations
+1. The paper estimated \(\text{PRED}_Y(R), \text{PRED}_D(R), \text{PRED}_{S_e}(R), \text{PRED}_{S_o}(R)\) using `randomForest` package This vignette instead uses `ranger`, a modern random forest package, that improves speed and reproducibility. 
+
+2. The paper computed the bootstrap standard errors using the `boot` package with parallelization without setting the seed. Three prediction tasks (`Ycons`, `Ylowinc`, and `Ymidinc`) were executed in parallel, each using roughly 80 cores. We now use a *custom cluster bootstrap* that supports deterministic seeding via `fix_seed = TRUE`, setting `set.seed(b)` for the *b*‑th replication. This preserves the resampling logic, ensuring reproducibility even under parallel execution.
+
+Under these changes, both point estimates and confidence intervals remain numerically identical to those in the paper. Any remaining minute deviations stem solely from differences in random-number-generation (RNG) behavior, not from the estimator itself.
+
+The vignettes can be accessed via:
+
+```r
+library(remoteoutcome)
+vignette("treatment-effects") # A vignette that retrain the models using ranger package.
+vignette("treatment-effects-original-predictions") # A vignette that uses the original randomForest-based predictions from the paper and applies the RSV estimator using those precomputed values. 
+```
+
 
 ## Planned Features
 
-The current version (0.1.0) implements the core RSV estimator for binary outcomes without pre-treatment covariates (Algorithm 1 from the main text). We plan to extend the package with the following features:
+The current version (0.1.0) implements the core RSV estimator for binary outcomes without pre-treatment covariates (Algorithm 1 from the main text). We plan to extend the package with the following features. These extensions are under active development. Contributions and feedback are welcome via [GitHub Issues](https://github.com/asheshrambachan/remoteoutcome/issues).
 
 ### 1. Discrete Outcomes
 
@@ -350,14 +273,6 @@ Incorporate pre-treatment covariates to improve efficiency and allow for:
 
 **Technical approach**: Extend Algorithm 1 to condition on pre-treatment covariates X in all conditional expectations, e.g., E[Y | R, X, S_o = 1], while maintaining the identifying stability assumption.
 
-### Implementation Timeline
-
-These extensions are under active development. Contributions and feedback are welcome via [GitHub Issues](https://github.com/asheshrambachan/remoteoutcome/issues).
-
-**Priority order**:
-1. Pre-treatment covariates (highest priority - most requested feature)
-2. Continuous outcomes via discretization
-3. General discrete outcomes
 
 ## Citation
 
@@ -375,12 +290,6 @@ If you use this package, please cite:
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
-
-## Authors
-
-- **Ashesh Rambachan** - Stanford University
-- **Rahul Singh**
-- **Davide Viviano**
 
 ## Issues and Contributions
 

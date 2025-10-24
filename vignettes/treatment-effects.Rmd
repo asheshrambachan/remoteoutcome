@@ -589,7 +589,7 @@ This vignette introduces two implementation changes relative to *Rambachan, Sing
 
 2. The paper computed the bootstrap standard errors using the `boot` package with parallelization without setting the seed. `remoteoutcome` uses a custom cluster bootstrap that supports deterministic seeding via `fix_seed = TRUE`, setting `set.seed(b)` for the *b*‑th replication.
 
-Under these changes, both point estimates and confidence intervals are similar to those reported in the paper up to small numerical differences introduced by these changes.
+Under these changes, the vignette reproduces the point estimates as reported in the paper and there are small numerical differences in the endpoints of the confidence intervals.
 
 # References
 

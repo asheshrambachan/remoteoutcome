@@ -11,7 +11,7 @@ rsv_fit_split(
   S_e,
   S_o,
   eps = 0.01,
-  ml_params = list(),
+  ml_params = list(seed = NULL, train_ratio = 0.5),
   se = TRUE,
   se_params = list()
 )

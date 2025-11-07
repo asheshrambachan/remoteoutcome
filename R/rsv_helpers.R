@@ -101,8 +101,8 @@ fit_predictions_rf <- function(R, Y, D, S_e, S_o, R_pred = NULL, ml_params = lis
     predictions = data.frame(
       Y = predict(model_Y, R_mat)$predictions[,"1"],
       D = predict(model_D, R_mat)$predictions[,"1"],
-      S_e = S_e, # predict(model_S_e, R_mat)$predictions[,"1"],
-      S_o = S_o # predict(model_S_o, R_mat)$predictions[,"1"]
+      S_e = predict(model_S_e, R_mat)$predictions[,"1"],
+      S_o = predict(model_S_o, R_mat)$predictions[,"1"]
     )
   )
 
@@ -325,7 +325,7 @@ count_marginals <- function(observations) {
   observations$Y <- as.integer((observations$Y == 1) & (observations$S_o == 1))
   observations$D <- as.integer((observations$D == 1) & (observations$S_e == 1))
   j <- get_joint(observations)
-  lapply(j, mean) # ∑P(D, S | X)  # TODO: replace with sum
+  lapply(j, mean)
 }
 
 #' Compute treatment and outcome variations for RSV estimation (Deltas)
@@ -451,6 +451,8 @@ get_sigma2 <- function(observations, predictions, theta_init, eps=1e-2) {
 #'
 #' @keywords internal
 get_theta_init <- function(observations, predictions){
+  predictions$S_e <- observations$S_e
+  predictions$S_o <- observations$S_o
   Delta <- get_Delta(observations, predictions)
   theta_init <- mean(Delta$e * Delta$o, na.rm = TRUE) / mean(Delta$o^2, na.rm = TRUE)
   return(theta_init)

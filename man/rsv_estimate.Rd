@@ -16,7 +16,7 @@ rsv_estimate(
   pred_S_o = NULL,
   theta_init = NULL,
   eps = 0.01,
-  method = c("split", "crossfit", "none"),
+  method = c("crossfit", "split", "none", "predict-only"),
   ml_params = list(),
   se = TRUE,
   se_params = list()

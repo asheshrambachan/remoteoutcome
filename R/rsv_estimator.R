@@ -147,9 +147,10 @@
 #'}
 rsv_estimate <- function(
   Y = NULL, D = NULL, S_e = NULL, S_o = NULL, R = NULL,
-  pred_Y = NULL, pred_D = NULL, pred_S_e = NULL, pred_S_o = NULL, theta_init = NULL,
+  pred_Y = NULL, pred_D = NULL, pred_S_e = NULL, pred_S_o = NULL, 
+  theta_init = NULL,
   eps = 1e-2,
-  method = c("split", "crossfit", "none"), ml_params = list(),
+  method = c("crossfit", "split", "none", "predict-only"), ml_params = list(),
   se = TRUE, se_params = list()
   ) {
   
@@ -165,7 +166,7 @@ rsv_estimate <- function(
     classwt_Y = c(10, 1),
     seed = NULL,
     cores = 1,
-    train_ratio = 0.5, # method = "split" parameter
+    train_ratio = 0.5, # method = "split" and "predict-only" if theta_init is missing 
     nfolds = 5 # method = "crossfit" parameter
   )
   ml_params <- utils::modifyList(ml_defaults, ml_params)
@@ -183,12 +184,13 @@ rsv_estimate <- function(
   if (is.null(Y) || is.null(D) || is.null(S_e) || is.null(S_o))
     stop("Y, D, S_e, and S_o must be provided")
   
-  # Check if predictions are provided
-  preds_provided <- !is.null(pred_Y) && !is.null(pred_D) &&
-                    !is.null(pred_S_e) && !is.null(pred_S_o)
   
-  if (preds_provided) {
+  if (method == "predict-only") {
     # Interface 1: User provides predictions
+    
+    if (is.null(pred_Y) | is.null(pred_D) | is.null(pred_S_e) | is.null(pred_S_o))
+      stop("pred_Y, pred_D, pred_S_e, pred_S_o, must be provided in method = predict-only")
+    
     result <- rsv_from_predictions(
       Y, D, S_e, S_o, 
       pred_Y, pred_D, pred_S_e, pred_S_o, theta_init = theta_init,
@@ -196,7 +198,7 @@ rsv_estimate <- function(
       ml_params = ml_params,
       se = se, se_params = se_params
     )
-    method <- "none"
+    
   } else {
     # Interface 2: Fit predictions from raw data
     if (is.null(R))
@@ -248,31 +250,38 @@ rsv_from_predictions <- function(
   pred_Y, pred_D, pred_S_e, pred_S_o, 
   theta_init = NULL,
   eps = 1e-2,
-  ml_params = list(),
+  ml_params = list(seed = NULL, train_ratio = 0.2),
   se = TRUE,
   se_params = list()
 ) {
   
-  # Construct test set
-  if (is.null(theta_init))
-    # Estimate theta_init from test data instead of train data if not provided
+  if (is.null(theta_init)) {
+    n <- length(Y)
+    train_ratio <- ml_params$train_ratio
+    seed <- ml_params$seed
+    
+    # Set seed for reproducibility
+    if (!is.null(seed)) set.seed(seed)
+    
+    # Create train/test split
+    train_idx <- sample(seq_len(n), size = floor(train_ratio * n), replace = FALSE)
+    test_idx <- setdiff(seq_len(n), train_idx)
+    
+    predictions_train <- data.frame(Y = pred_Y, D = pred_D, S_e = pred_S_e, S_o = pred_S_o)[train_idx,]
+    observations_train <- data.frame(Y, D, S_e, S_o)[train_idx,]
+    
     theta_init <- get_theta_init(
-      observations = data.frame(Y, D, S_e, S_o),
-      predictions = data.frame(
-        Y = pred_Y,
-        D = pred_D,
-        S_e = S_e, # pred_S_e,
-        S_o = S_o # pred_S_o
-      )
+      observations = observations_train,
+      predictions = predictions_train
     )
-  
-  predictions <- data.frame(
-    Y = pred_Y,
-    D = pred_D,
-    S_e = pred_S_e,
-    S_o = pred_S_o
-  )
-  observations <- data.frame(Y, D, S_e, S_o)
+    
+    predictions <- data.frame(Y = pred_Y, D = pred_D, S_e = pred_S_e, S_o = pred_S_o)[test_idx,]
+    observations <- data.frame(Y, D, S_e, S_o)[test_idx,]
+
+  } else {
+    predictions <- data.frame(Y = pred_Y, D = pred_D, S_e = pred_S_e, S_o = pred_S_o)
+    observations <- data.frame(Y, D, S_e, S_o)
+  }
   
   # Compute RSV estimator
   result <- rsv_compute(
@@ -356,11 +365,10 @@ rsv_fit_none <- function(
 rsv_fit_split <- function(
     R, Y, D, S_e, S_o, 
     eps = 1e-2,
-    ml_params = list(),
+    ml_params = list(seed = NULL, train_ratio = 0.5),
     se = TRUE,
     se_params = list()
   ) {
-  
   n <- length(Y)
   train_ratio <- ml_params$train_ratio
   seed <- ml_params$seed
@@ -386,12 +394,7 @@ rsv_fit_split <- function(
   # Construct test set
   theta_init <- out$theta_init
   predictions <- out$predictions
-  observations <- data.frame(
-    Y = Y[test_idx], 
-    D = D[test_idx], 
-    S_e = S_e[test_idx],
-    S_o = S_o[test_idx]
-  )
+  observations <- data.frame(Y, D, S_e, S_o)[test_idx,]
   
   # Compute RSV estimator
   result <- rsv_compute(
@@ -430,11 +433,10 @@ rsv_fit_split <- function(
 rsv_fit_crossfit <- function(
     R, Y, D, S_e, S_o, 
     eps = 1e-2,
-    ml_params = list(),
+    ml_params = list(seed = NULL, nfolds = 5),
     se = FALSE,
     se_params = list()
   ) {
-
   n <- length(Y)
   nfolds <- ml_params$nfolds
   seed <- ml_params$seed
@@ -470,12 +472,7 @@ rsv_fit_crossfit <- function(
     # Construct test set
     theta_init_k <- out_k$theta_init
     predictions_k <- out_k$predictions
-    observations_k <- data.frame(
-      Y = Y[test_idx], 
-      D = D[test_idx], 
-      S_e = S_e[test_idx],
-      S_o = S_o[test_idx]
-    )
+    observations_k <- data.frame(Y, D, S_e, S_o)[test_idx,]
     
     # Compute RSV estimator
     result_k <- rsv_compute(

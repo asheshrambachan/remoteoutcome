@@ -11,7 +11,7 @@ rsv_fit_crossfit(
   S_e,
   S_o,
   eps = 0.01,
-  ml_params = list(),
+  ml_params = list(seed = NULL, nfolds = 5),
   se = FALSE,
   se_params = list()
 )

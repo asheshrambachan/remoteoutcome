@@ -15,7 +15,7 @@ rsv_from_predictions(
   pred_S_o,
   theta_init = NULL,
   eps = 0.01,
-  ml_params = list(),
+  ml_params = list(seed = NULL, train_ratio = 0.2),
   se = TRUE,
   se_params = list()
 )

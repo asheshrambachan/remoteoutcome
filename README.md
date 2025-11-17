@@ -56,7 +56,8 @@ library(dplyr)
 library(remoteoutcome)
 
 # Load sample data
-data("data_real", package = "remoteoutcome")
+data("smartcard_data", package = "remoteoutcome")
+data_real <- create_data_real(smartcard_data)
 
 Y <- data_real$Ycons # binary outcome
 D <- data_real$D # binary treatment
@@ -165,7 +166,7 @@ result <- rsv_estimate(
   pred_D = pred_real_Ycons$pred_D,
   pred_S_e = pred_real_Ycons$pred_S_e,
   pred_S_o = pred_real_Ycons$pred_S_o,
-  theta_init = -0.03220447,
+  theta_init = attr(pred_real_Ycons, "theta_init"), # -0.03220447
   method = "predictions",
   se = TRUE,
   se_params = list(B = 1000, fix_seed = TRUE, clusters = pred_real_Ycons$clusters),
@@ -196,7 +197,8 @@ treatment effects.
 ```r
 library(dplyr)
 library(remoteoutcome)
-data("data_real", package = "remoteoutcome")
+data("smartcard_data", package = "remoteoutcome")
+data_real <- create_data_real(smartcard_data)
 
 Y <- data_real$Ycons # binary outcome
 D <- data_real$D # binary treatment
@@ -221,13 +223,13 @@ result <- rsv_estimate(
   ml_params = list(       # Customize random forest parameters:
     ntree = 100,          #   Number of trees
     classwt_Y = c(10, 1), #   Class weights for PRED_Y model
-    seed = 42,            #   A random seed for each RF for reproducibility
+    seed = 42             #   A random seed for each RF for reproducibility
   ),
   se = TRUE,
   se_params = list(       # Customize cluster-bootstrap standard errors:
     B = 1000,             #   Number of bootstrap replications
     clusters = clusters,  #   Cluster identifiers for clustered sampling, if not provided, use individual-level bootstrap
-    fix_seed = TRUE,      #   Enables deterministic seeding for reproducibility 
+    fix_seed = TRUE       #   Enables deterministic seeding for reproducibility 
     ),
   cores = 7
 )

@@ -18,6 +18,7 @@ knitr::opts_chunk$set(
   comment = "#>",
   fig.width = 7,
   fig.height = 5
+  #, eval = FALSE
 )
 ```
 
@@ -37,7 +38,6 @@ It includes:
 - **Sample indicators:** Experimental design identifiers distinguishing treatment and control groups.
 
 ```{r load-data}
-library(psych)
 library(latex2exp)
 library(stringr)
 library(knitr)
@@ -78,13 +78,28 @@ The poverty outcomes analyzed in the application are defined as follows:
   - `Ymidinc`: No household members earning more than 10,000 INR per month.
   
 ```{r tab-outcomes, echo=FALSE}
-smartcard_data %>% 
+smartcard_data %>%
   select(Ycons, Ylowinc, Ymidinc) %>%
-  rename(c("Consumption"=Ycons, "Low Income"=Ylowinc, "Middle Income"=Ymidinc)) %>%
-  describe() %>%
-  select(c("n", "mean", "sd", "min", "max")) %>%
-  rownames_to_column(var = "Outcome") %>%
-  kable(digits = 3, caption="Outcome Variables") %>%
+  rename(
+    "Consumption" = Ycons,
+    "Low Income" = Ylowinc,
+    "Middle Income" = Ymidinc
+  ) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Outcome",
+    values_to = "value"
+  ) %>%
+  group_by(Outcome) %>%
+  summarise(
+    n = sum(!is.na(value)),
+    mean = mean(value, na.rm = TRUE),
+    sd = sd(value, na.rm = TRUE),
+    min = min(value, na.rm = TRUE),
+    max = max(value, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  kable(digits = 3, caption = "Outcome Variables") %>%
   kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
@@ -557,9 +572,3 @@ Muralidharan, K., Niehaus, P., and Sukhtankar, S. (2016). "Building state capaci
 Muralidharan, K., Niehaus, P., and Sukhtankar, S. (2023). "General equilibrium effects of (improving) public employment programs: Experimental evidence from India." *Econometrica* 91 (4), 1261-1295.
 
 Rambachan, A., Singh, R., and Viviano, D. (2025). "Program Evaluation with Remotely Sensed Outcomes." *arXiv:2411.10959*.
-
-# Session Info
-
-```{r session-info}
-sessionInfo()
-```

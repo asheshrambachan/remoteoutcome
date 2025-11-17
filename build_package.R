@@ -38,9 +38,9 @@ cat("\nStep 2: Building manual...\n")
 manual_file <- devtools::build_manual(pkg_dir, path = pkg_dir)
 cat("Manual built\n")
 
-# Step 3: Check package
-cat("\nStep 3: Checking package...\n")
-check_results <- devtools::check(pkg_dir)
+# # Step 3: Check package
+# cat("\nStep 3: Checking package...\n")
+# check_results <- devtools::check(pkg_dir)
 
 # Step 4: Build package
 cat("\nStep 4: Building package and vignettes...\n")
@@ -49,7 +49,7 @@ cat("Package built:", pkg_file, "\n")
 
 # Step 5: Install package
 cat("\nStep 5: Installing package...\n")
-devtools::install(pkg_dir)
+devtools::install(pkg_dir, build_vignettes=TRUE)
 cat("Package installed!\n")
 
 

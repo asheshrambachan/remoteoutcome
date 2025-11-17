@@ -31,7 +31,6 @@ Suggests:
     rmarkdown,
     kableExtra,
     latex2exp, 
-    psych,
     stringr,
     tibble,
     tidyr

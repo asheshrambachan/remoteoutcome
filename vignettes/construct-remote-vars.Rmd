@@ -1,6 +1,11 @@
 ---
 title: "Constructing Remote Sensed Variables"
-output: rmarkdown::html_vignette
+author: "Rambachan, Singh, and Viviano (2025)"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_document:
+    toc: true
+    toc_depth: 3
 vignette: >
   %\VignetteIndexEntry{Constructing Remote Sensed Variables}
   %\VignetteEngine{knitr::rmarkdown}
@@ -25,8 +30,6 @@ This vignette demonstrates how to construct remote sensed variables by combining
 
 These remote sensed variables serve as the $R$ covariates in the RSV estimation framework, enabling treatment effect estimation when treatment and outcomes are observed in separate samples.
 
-For simplicity, this vignette demonstrate this for a sample of 5 shrids only.
-
 # Prerequisites
 
 ## Required Packages
@@ -42,30 +45,22 @@ library(redivis)
 library(kableExtra)
 ```
 
-## Data Access
+## Download SHRUG Shapfiles
 
-You will need:
+Download **SHRUG shapefiles** from [devdatalab.org/shrug_download](https://www.devdatalab.org/shrug_download)
 
-- **SHRUG shapefiles**: Download from [devdatalab.org/shrug_download](https://www.devdatalab.org/shrug_download)
-- **VIIRS data**: Available through Harvard Dataverse (accessed via API in this vignette)
-- **MOSAIKS features**: Queried through the Redivis API
 
 # Step 1: Setup paths and select shrid IDs
 
 ```{r shrid_ids}
-# Load SHRUG shapefiles (adjust path to your download)
-shrug_shapefile <- "../data-raw/shrug-shrid-poly-gpkg/shrid2_open.gpkg"
+# Load SHRUG shapefiles (adjust path to your download) from devdatalab.org/shrug_download
+shrug_shapefile <- "shrug-shrid-poly-gpkg/shrid2_open.gpkg"
 
 # Path to save remote_vars
-path_to_remote_vars = "../data-raw/remote_vars_5.rda"
-
-# Number of shirds
-n_shrid = 5
+path_to_remote_vars = "remote_vars.rda"
 
 # Load base data (included in package)
 data(smartcard_data, package = "remoteoutcome")
-smartcard_data <- smartcard_data %>%
-  slice(1:n_shrid)
 
 shrid_ids <- unique(smartcard_data$shrid2)
 ```
@@ -283,7 +278,7 @@ cat(sprintf("  - MOSAIKS features: %d\n",  ncol(satellite_features %>% select(-s
 
 ```{r save}
 # Save
-# save(remote_vars, file = path_to_satellite_features, compress = "bzip2")
+save(remote_vars, file = path_to_satellite_features, compress = "bzip2")
 ```
 
 # References

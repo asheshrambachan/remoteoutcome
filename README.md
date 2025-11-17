@@ -50,9 +50,9 @@ library(dplyr)
 library(remoteoutcome)
 
 # Load the data
-data("smartcard_data", library="remoteoutcome")
-data("remote_vars_p1", library="remoteoutcome")
-data("remote_vars_p2", library="remoteoutcome")
+data("smartcard_data", package="remoteoutcome")
+data("remote_vars_p1", package="remoteoutcome")
+data("remote_vars_p2", package="remoteoutcome")
 force(smartcard_data)
 force(remote_vars_p1)
 force(remote_vars_p2)

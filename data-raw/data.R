@@ -25,6 +25,61 @@
 #'   \item{Ylowinc}{Binary outcome: 1 if no households earn less than 5,000 rupees, 0 otherwise}
 #'   \item{Ymidinc}{Binary outcome: 1 if no households earn more than 10,000 rupees, 0 otherwise}
 #'   \item{clusters}{Cluster identifier (Subdistrict (mandal) name + District name in Andhra Pradesh)}
+#' }
+#'
+#' @source
+#' \itemize{
+#'   \item Study data: Muralidharan, K., Niehaus, P., & Sukhtankar, S. (2016).
+#'     Building State Capacity: Evidence from Biometric Smartcards in India.
+#'     \emph{American Economic Review}, 106(10), 2895-2929. 
+#'     \url{https://www.openicpsr.org/openicpsr/project/113012/version/V1/view?path=/openicpsr/113012/fcr:versions/V1/20141346_data/data/balance-for-ap-mandal-comparison.dta&type=file}
+#'   \item SHRUG location data: \url{https://dataverse.harvard.edu/api/access/datafile/10742739}
+#'   \item Socio-Economic and Caste Census (SECC) Consumption Data: \url{https://dataverse.harvard.edu/api/access/datafile/10742743}
+#'   \item Socio-Economic and Caste Census (SECC) Income Data: \url{https://dataverse.harvard.edu/api/access/datafile/10742876}
+#'   \item VIIRS: \url{https://dataverse.harvard.edu/api/access/datafile/10742856}
+#'   \item SHRUG shapefiles: Asher, S., Lunt, T., Matsuura, R., & Novosad, P. (2021).
+#'     Development research at high geographic resolution: An analysis of night-lights,
+#'     firms, and poverty in India using the SHRUG open data platform.
+#'     \emph{The World Bank Economic Review}, 35(4), 845-871.
+#'     \url{https://www.devdatalab.org/shrug_download}
+#'   \item MOSAIKS: Rolf, E., Proctor, J., Carleton, T., Bolliger, I., Shankar, V.,
+#'     Ishihara, M., Recht, B., & Hsiang, S. (2021). A generalizable and accessible
+#'     approach to machine learning with global satellite imagery.
+#'     \emph{Nature Communications}, 12, 4392.
+#'     \doi{10.1038/s41467-021-24638-z}
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' # Load the data
+#' data(smartcard_data, library="remoteoutcome")
+#' data(remote_vars_p1, library="remoteoutcome")
+#' data(remote_vars_p2, library="remoteoutcome")
+#' 
+#' smartcard_data <- smartcard_data %>%
+#'   inner_join(remote_vars_p1, by="shrid2") %>%
+#'   inner_join(remote_vars_p2, by="shrid2")
+#'   
+#' # Summary of treatment assignment
+#' table(smartcard_data$D, useNA = "ifany")
+#'
+#' # Villages affected by spillovers
+#' table(smartcard_data$spillover_20km)
+#'
+#' # Sample distribution
+#' table(smartcard_data$`Sample (Smartcard)`)
+#' }
+"smartcard_data"
+
+#' Andhra Pradesh Smartcard Study Data with Remote Sensing Features
+#'
+#' Complete dataset from Muralidharan et al.'s smartcard study in Andhra Pradesh,
+#' India, merged with SECC socioeconomic data and VIIRS nighttime lights data. 
+#' This dataset contains all villages with treatment assignment, and outcomes.
+#'
+#' @format A data frame with 8,312 rows and 60 columns:
+#' \describe{
+#'   \item{shrid2}{SHRUG village identifier (unique)}
 #'   \item{luminosity_min.*}{Minimum VIIRS nighttime luminosity for years 2012-2021}
 #'   \item{luminosity_max.*}{Maximum VIIRS nighttime luminosity for years 2012-2021}
 #'   \item{luminosity_mean.*}{Mean VIIRS nighttime luminosity for years 2012-2021}
@@ -60,7 +115,13 @@
 #' \dontrun{
 #' # Load the data
 #' data(smartcard_data, library="remoteoutcome")
-#'
+#' data(remote_vars_p1, library="remoteoutcome")
+#' data(remote_vars_p2, library="remoteoutcome")
+#' 
+#' smartcard_data <- smartcard_data %>%
+#'   inner_join(remote_vars_p1, by="shrid2") %>%
+#'   inner_join(remote_vars_p2, by="shrid2")
+#'   
 #' # Summary of treatment assignment
 #' table(smartcard_data$D, useNA = "ifany")
 #'
@@ -70,7 +131,64 @@
 #' # Sample distribution
 #' table(smartcard_data$`Sample (Smartcard)`)
 #' }
-"smartcard_data"
+"remote_vars_p1"
+
+#' Andhra Pradesh Smartcard Study Data with Remote Sensing Features
+#'
+#' Complete dataset from Muralidharan et al.'s smartcard study in Andhra Pradesh,
+#' India, merged with SECC socioeconomic data and VIIRS nighttime lights data. 
+#' This dataset contains all villages with treatment assignment, and outcomes.
+#'
+#' @format A data frame with 8,312 rows and 60 columns:
+#' \describe{
+#'   \item{shrid2}{SHRUG village identifier (unique)}
+#'   \item{satellite_*}{MOSAIKS satellite imagery features: 4,000-dimensional  
+#'     convolutional neural network features extracted from Planet imagery (2019)}
+#' }
+#'
+#' @source
+#' \itemize{
+#'   \item Study data: Muralidharan, K., Niehaus, P., & Sukhtankar, S. (2016).
+#'     Building State Capacity: Evidence from Biometric Smartcards in India.
+#'     \emph{American Economic Review}, 106(10), 2895-2929. 
+#'     \url{https://www.openicpsr.org/openicpsr/project/113012/version/V1/view?path=/openicpsr/113012/fcr:versions/V1/20141346_data/data/balance-for-ap-mandal-comparison.dta&type=file}
+#'   \item SHRUG location data: \url{https://dataverse.harvard.edu/api/access/datafile/10742739}
+#'   \item Socio-Economic and Caste Census (SECC) Consumption Data: \url{https://dataverse.harvard.edu/api/access/datafile/10742743}
+#'   \item Socio-Economic and Caste Census (SECC) Income Data: \url{https://dataverse.harvard.edu/api/access/datafile/10742876}
+#'   \item VIIRS: \url{https://dataverse.harvard.edu/api/access/datafile/10742856}
+#'   \item SHRUG shapefiles: Asher, S., Lunt, T., Matsuura, R., & Novosad, P. (2021).
+#'     Development research at high geographic resolution: An analysis of night-lights,
+#'     firms, and poverty in India using the SHRUG open data platform.
+#'     \emph{The World Bank Economic Review}, 35(4), 845-871.
+#'     \url{https://www.devdatalab.org/shrug_download}
+#'   \item MOSAIKS: Rolf, E., Proctor, J., Carleton, T., Bolliger, I., Shankar, V.,
+#'     Ishihara, M., Recht, B., & Hsiang, S. (2021). A generalizable and accessible
+#'     approach to machine learning with global satellite imagery.
+#'     \emph{Nature Communications}, 12, 4392.
+#'     \doi{10.1038/s41467-021-24638-z}
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' # Load the data
+#' data(smartcard_data, library="remoteoutcome")
+#' data(remote_vars_p1, library="remoteoutcome")
+#' data(remote_vars_p2, library="remoteoutcome")
+#' 
+#' smartcard_data <- smartcard_data %>%
+#'   inner_join(remote_vars_p1, by="shrid2") %>%
+#'   inner_join(remote_vars_p2, by="shrid2")
+#'   
+#' # Summary of treatment assignment
+#' table(smartcard_data$D, useNA = "ifany")
+#'
+#' # Villages affected by spillovers
+#' table(smartcard_data$spillover_20km)
+#'
+#' # Sample distribution
+#' table(smartcard_data$`Sample (Smartcard)`)
+#' }
+"remote_vars_p2"
 
 
 #' Predicted Values and Observations for Consumption Outcome (Real Sample Split)
@@ -158,7 +276,7 @@
 #' @seealso
 #' \itemize{
 #'   \item \code{\link{rsv_estimate}} for using this dataset to estimate treatment effects
-#'   \item \code{\link{data_real}} for the underlying data without predictions
+#'   \item \code{\link{smartcard_data}} for the underlying data without predictions
 #'   \item \code{vignette(package = "remoteoutcome")} for examples
 #' }
 #'

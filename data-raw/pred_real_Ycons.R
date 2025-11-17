@@ -51,4 +51,5 @@ pred_real_Ycons <- data.frame(
   clusters = rsv_real_Ycons$clusters
 )
 attr(pred_real_Ycons, "theta_init") <- rsv_real_Ycons$theta_init
-usethis::use_data(pred_real_Ycons, overwrite = TRUE)
+# usethis::use_data(pred_real_Ycons, overwrite = TRUE)
+save(pred_real_Ycons, file = "data/pred_real_Ycons.rda", compress = "xz", compression_level = 9)

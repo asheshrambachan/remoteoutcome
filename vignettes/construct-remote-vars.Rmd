@@ -56,9 +56,6 @@ Download **SHRUG shapefiles** from [devdatalab.org/shrug_download](https://www.d
 # Load SHRUG shapefiles (adjust path to your download) from devdatalab.org/shrug_download
 shrug_shapefile <- "shrug-shrid-poly-gpkg/shrid2_open.gpkg"
 
-# Path to save remote_vars
-path_to_remote_vars = "remote_vars.rda"
-
 # Load base data (included in package)
 data(smartcard_data, package = "remoteoutcome")
 
@@ -278,7 +275,10 @@ cat(sprintf("  - MOSAIKS features: %d\n",  ncol(satellite_features %>% select(-s
 
 ```{r save}
 # Save
-save(remote_vars, file = path_to_satellite_features, compress = "bzip2")
+remote_vars_p1 <- smartcard_data %>% select(shrid2, starts_with("luminosity_"), paste0("satellite_", 1:1000))
+remote_vars_p2 <- smartcard_data %>% select(shrid2, paste0("satellite_", 1001:4000))
+save(remote_vars_p1, file = "data/remote_vars_p1.rda", compress = "xz", compression_level = 9)
+save(remote_vars_p2, file = "data/remote_vars_p2.rda", compress = "xz", compression_level = 9)
 ```
 
 # References

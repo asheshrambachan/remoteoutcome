@@ -13,17 +13,11 @@ This package implements the nonparametric methods developed in:
 ## Installation from source
 
 The package may be installed by using the function `install_github()` from the
-remotes package: 
+devtools package: 
 
 ```r
-# Install remotes package if not installed
-install.packages("remotes")
-
-# Turn off warning-error-conversion, because the tiniest warning stops installation
-Sys.setenv("R_REMOTES_NO_ERRORS_FROM_WARNINGS" = "true")
-
 # install from github
-remotes::install_github("https://github.com/asheshrambachan/remoteoutcome")
+devtools::install_github("https://github.com/asheshrambachan/remoteoutcome")
 ```
 
 ## Vignettes

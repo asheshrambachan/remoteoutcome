@@ -17,7 +17,7 @@ devtools package:
 
 ```r
 # install from github
-devtools::install_github("https://github.com/asheshrambachan/remoteoutcome")
+devtools::install_github("https://github.com/asheshrambachan/remoteoutcome", build_vignettes = TRUE)
 ```
 
 ## Vignettes
@@ -29,8 +29,7 @@ In particular, it illustrates how `remoteoutcome` can be used to re-analyze the 
 The vignette can be accessed via:
 
 ```r
-library(remoteoutcome)
-vignette("treatment-effects")
+vignette("treatment-effects", package = "remoteoutcome")
 ```
 
 ## Sample Splitting Options in `remoteoutcome`

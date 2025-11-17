@@ -104,7 +104,7 @@ create_data_real <- function(data) {
   }
   
   cat(sprintf(
-    "Created data_real with %d observations:\n  Experimental only: %d\n  Observational only: %d\n  Both samples: %d",
+    "Created data_real with %d observations:\n  Experimental only: %d\n  Observational only: %d\n  Both samples: %d\n",
     nrow(result), n_exp, n_obs, n_both
   ))
   
@@ -221,7 +221,7 @@ create_data_synth <- function(data) {
   }
   
   cat(sprintf(
-    "Created data_synth with %d observations:\n  Experimental only: %d\n  Observational only: %d\n  Both samples: %d\n  Clusters in observational sample: %d of %d (%.1f%%)",
+    "Created data_synth with %d observations:\n  Experimental only: %d\n  Observational only: %d\n  Both samples: %d\n  Clusters in observational sample: %d of %d (%.1f%%)\n",
     nrow(result), n_exp, n_obs, n_both, n_obs_clusters, length(clusters), 
     n_obs_clusters/length(clusters) * 100
   ))

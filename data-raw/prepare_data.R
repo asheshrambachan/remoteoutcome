@@ -200,30 +200,8 @@ spillover_affected_bkm <- function(D, centroid_lat, centroid_lon, b_km) {
   return(spillover_affected)
 }
 
-
 # ==============================================================================
-# 1. Load and Clean SHRUG Location Data
-# ==============================================================================
-
-# Name mappings for consistency
-district_name_map <- c("sri potti sriramulu nellore" = "nellore", 
-                       "ysr kadapa" = "kadapa")
-subdistrict_name_map <- c("sirpur town" = "sirpur t")
-
-shrug_loc <- read.table(
-  "https://dataverse.harvard.edu/api/access/datafile/10742739",
-  sep = "\t", header = TRUE
-) %>%
-  select(shrid2, state_name, district_name, subdistrict_name) %>%
-  filter(state_name == "andhra pradesh") %>%
-  mutate(
-    district_name    = recode(district_name, !!!district_name_map),
-    subdistrict_name = recode(subdistrict_name, !!!subdistrict_name_map)
-  ) %>%
-  select(-state_name)
-
-# ==============================================================================
-# 2. Load and Clean Muralidharan et al. Study Data
+# 1. Load and Clean Muralidharan et al. Study Data
 # ==============================================================================
 
 sample_smartcard_levels <- c(
@@ -250,6 +228,28 @@ study_data <- read_dta(
     clusters = paste(subdistrict_name, district_name, sep = " ")
   ) %>% 
   select(-wave, -uniqueM) 
+
+# ==============================================================================
+# 2. Get Shrid IDs
+# ==============================================================================
+
+# Name mappings for consistency
+district_name_map <- c("sri potti sriramulu nellore" = "nellore", 
+                       "ysr kadapa" = "kadapa")
+subdistrict_name_map <- c("sirpur town" = "sirpur t")
+
+shrug_loc <- read.table(
+  "https://dataverse.harvard.edu/api/access/datafile/10742739",
+  sep = "\t", header = TRUE
+) %>%
+  select(shrid2, state_name, district_name, subdistrict_name) %>%
+  filter(state_name == "andhra pradesh") %>%
+  mutate(
+    district_name    = recode(district_name, !!!district_name_map),
+    subdistrict_name = recode(subdistrict_name, !!!subdistrict_name_map)
+  ) %>%
+  select(-state_name)
+
 
 # ==============================================================================
 # 3. Load and Merge SECC Data
@@ -281,7 +281,7 @@ secc <- full_join(secc_cons, secc_income, by = "shrid2")
 # 4. Merge All Data Sources
 # ==============================================================================
 
-base_data <- shrug_loc %>%
+base_data <- shrug_loc%>%
   inner_join(study_data, by = c("district_name", "subdistrict_name")) %>%
   left_join(secc, by = "shrid2") %>%
   filter(tot_p >= 100) %>%
@@ -466,11 +466,9 @@ smartcard_data <- base_data %>%
   select(shrid2, spillover_20km, tot_p, tot_f, `Sample (Smartcard)`, D, Ycons, Ylowinc, Ymidinc, clusters, 
          starts_with("luminosity_"), starts_with("satellite_"))
 
-# Strip Stata attributes (they bloat the file)
-smartcard_data <- zap_labels(smartcard_data)  # removes label attributes
-smartcard_data <- zap_formats(smartcard_data) # removes format.stata attributes
-
-# Remove label and format.stata attributes from every column
+# Strip Stata attributes
+smartcard_data <- zap_labels(smartcard_data)
+smartcard_data <- zap_formats(smartcard_data) 
 for (i in seq_along(smartcard_data)) {
   attr(smartcard_data[[i]], "label") <- NULL
   attr(smartcard_data[[i]], "format.stata") <- NULL
@@ -479,11 +477,6 @@ for (i in seq_along(smartcard_data)) {
 # ==============================================================================
 # 8. Save Datasets
 # ==============================================================================
-# smartcard_data <- smartcard_data %>%
-#   inner_join(remote_vars_p1, by="shrid2") %>%
-#   inner_join(remote_vars_p2, by="shrid2") %>%
-#   inner_join(remote_vars_p3, by="shrid2")
-
 remote_vars_p1 <- smartcard_data %>% select(shrid2, starts_with("luminosity"), paste0("satellite_", 1:2000))
 remote_vars_p2 <- smartcard_data %>% select(shrid2, paste0("satellite_", 2001:4000))
 save(remote_vars_p1, file = "data/remote_vars_p1.rda", compress = "xz", compression_level = 9)

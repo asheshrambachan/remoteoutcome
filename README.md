@@ -50,9 +50,12 @@ library(dplyr)
 library(remoteoutcome)
 
 # Load the data
-data(smartcard_data, library="remoteoutcome")
-data(remote_vars_p1, library="remoteoutcome")
-data(remote_vars_p2, library="remoteoutcome")
+data("smartcard_data", library="remoteoutcome")
+data("remote_vars_p1", library="remoteoutcome")
+data("remote_vars_p2", library="remoteoutcome")
+force(smartcard_data)
+force(remote_vars_p1)
+force(remote_vars_p2)
 
 # Merge remote variables
 smartcard_data <- smartcard_data %>%
@@ -158,6 +161,7 @@ If you have your own fitted predictions, provide them directly:
 # Fit your own models to obtain predictions. 
 # Load sample data
 data("pred_real_Ycons", package = "remoteoutcome")
+force(pred_real_Ycons)
 
 result <- rsv_estimate(
   Y = pred_real_Ycons$Y,
@@ -200,6 +204,7 @@ treatment effects.
 library(dplyr)
 library(remoteoutcome)
 data("smartcard_data", package = "remoteoutcome")
+
 data_real <- create_data_real(smartcard_data)
 
 Y <- data_real$Ycons # binary outcome

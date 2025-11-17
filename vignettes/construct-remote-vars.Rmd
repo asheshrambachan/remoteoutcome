@@ -91,6 +91,15 @@ viirs_annual <- read_dta(
     names_sep = "."
   )
 
+# Strip Stata attributes
+viirs_annual <- zap_labels(viirs_annual)
+viirs_annual <- zap_formats(viirs_annual)
+for (i in seq_along(viirs_annual)) {
+  attr(viirs_annual[[i]], "label") <- NULL
+  attr(viirs_annual[[i]], "format.stata") <- NULL
+}
+
+
 viirs_annual %>% 
   select(shrid2, luminosity_min.2012, luminosity_min.2013, luminosity_max.2012, luminosity_max.2013, luminosity_num_cells.2012, luminosity_num_cells.2013) %>%
   kable(format = "markdown", digits = 3, caption = "VIIRS Luminosity Data") %>%

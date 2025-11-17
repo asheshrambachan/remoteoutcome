@@ -9,8 +9,8 @@ A data frame with 8,312 rows and 10 columns:
 \describe{
   \item{shrid2}{SHRUG village identifier (unique)}
   \item{spillover_20km}{Logical indicator for spillover-affected villages
-    (within 20km of villages with different treatment status). The identification 
-    uses maximum bipartite matching and Konig's theorem to find the maximum 
+    (within 20km of villages with different treatment status). Identified 
+    using maximum bipartite matching and Konig's theorem to find the maximum 
     independent set.}
   \item{tot_p}{Total population from SECC census}
   \item{tot_f}{Total number of families from SECC census}
@@ -23,9 +23,12 @@ A data frame with 8,312 rows and 10 columns:
     NA if "Observational (N/A)" wave}
   \item{Ycons}{Binary outcome: 1 if village consumption is in bottom quartile
     (<= 18,946.61 rupees per capita), 0 otherwise}
-  \item{Ylowinc}{Binary outcome: 1 if no households earn less than 5,000 rupees, 0 otherwise}
-  \item{Ymidinc}{Binary outcome: 1 if no households earn more than 10,000 rupees, 0 otherwise}
-  \item{clusters}{Cluster identifier (Subdistrict (mandal) name + District name in Andhra Pradesh)}
+  \item{Ylowinc}{Binary outcome: 1 if no households earn less than 5,000 
+    rupees, 0 otherwise}
+  \item{Ymidinc}{Binary outcome: 1 if no households earn more than 10,000 
+    rupees, 0 otherwise}
+  \item{clusters}{Cluster identifier (subdistrict name + district name in 
+    Andhra Pradesh)}
 }
 }
 \source{
@@ -33,49 +36,67 @@ A data frame with 8,312 rows and 10 columns:
   \item Study data: Muralidharan, K., Niehaus, P., & Sukhtankar, S. (2016).
     Building State Capacity: Evidence from Biometric Smartcards in India.
     \emph{American Economic Review}, 106(10), 2895-2929. 
-    \url{https://www.openicpsr.org/openicpsr/project/113012/version/V1/view?path=/openicpsr/113012/fcr:versions/V1/20141346_data/data/balance-for-ap-mandal-comparison.dta&type=file}
-  \item SHRUG location data: \url{https://dataverse.harvard.edu/api/access/datafile/10742739}
-  \item Socio-Economic and Caste Census (SECC) Consumption Data: \url{https://dataverse.harvard.edu/api/access/datafile/10742743}
-  \item Socio-Economic and Caste Census (SECC) Income Data: \url{https://dataverse.harvard.edu/api/access/datafile/10742876}
-  \item VIIRS: \url{https://dataverse.harvard.edu/api/access/datafile/10742856}
-  \item SHRUG shapefiles: Asher, S., Lunt, T., Matsuura, R., & Novosad, P. (2021).
-    Development research at high geographic resolution: An analysis of night-lights,
-    firms, and poverty in India using the SHRUG open data platform.
-    \emph{The World Bank Economic Review}, 35(4), 845-871.
-    \url{https://www.devdatalab.org/shrug_download}
-  \item MOSAIKS: Rolf, E., Proctor, J., Carleton, T., Bolliger, I., Shankar, V.,
-    Ishihara, M., Recht, B., & Hsiang, S. (2021). A generalizable and accessible
-    approach to machine learning with global satellite imagery.
-    \emph{Nature Communications}, 12, 4392.
-    \doi{10.1038/s41467-021-24638-z}
+    \doi{10.1257/aer.20141346}
+  \item SHRUG location data: Asher, S., Lunt, T., Matsuura, R., & Novosad, P. (2021).
+    \url{https://dataverse.harvard.edu/api/access/datafile/10742739}
+  \item SECC Consumption: 
+    \url{https://dataverse.harvard.edu/api/access/datafile/10742743}
+  \item SECC Income: 
+    \url{https://dataverse.harvard.edu/api/access/datafile/10742876}
 }
 }
 \usage{
 smartcard_data
 }
 \description{
-Complete dataset from Muralidharan et al.'s smartcard study in Andhra Pradesh,
-India, merged with SECC socioeconomic data.
+Base dataset from Muralidharan et al.'s smartcard study in Andhra Pradesh,
+India, merged with SECC socioeconomic data. This dataset contains all 
+villages with treatment assignment and outcomes, but excludes remote 
+sensing features to reduce file size.
+}
+\details{
+This dataset must be merged with \code{remote_vars_p1} and 
+\code{remote_vars_p2} to obtain the complete data with remote sensing 
+features required for RSV estimation. The remote sensing variables are 
+stored separately due to file size limits.
 }
 \examples{
-\dontrun{
-# Load the data
-data(smartcard_data, library="remoteoutcome")
-data(remote_vars_p1, library="remoteoutcome")
-data(remote_vars_p2, library="remoteoutcome")
+# Load all three datasets
+data("smartcard_data", package = "remoteoutcome")
+data("remote_vars_p1", package = "remoteoutcome")
+data("remote_vars_p2", package = "remoteoutcome")
+force(smartcard_data)
+force(remote_vars_p1)
+force(remote_vars_p2)
 
+# Merge to create complete dataset
 smartcard_data <- smartcard_data \%>\%
-  inner_join(remote_vars_p1, by="shrid2") \%>\%
-  inner_join(remote_vars_p2, by="shrid2")
+  inner_join(remote_vars_p1, by = "shrid2") \%>\%
+  inner_join(remote_vars_p2, by = "shrid2")
   
-# Summary of treatment assignment
+# Summary statistics
 table(smartcard_data$D, useNA = "ifany")
-
-# Villages affected by spillovers
-table(smartcard_data$spillover_20km)
-
-# Sample distribution
 table(smartcard_data$`Sample (Smartcard)`)
+
+\dontrun{
+# Use with RSV estimation
+Y <- smartcard_data$Ycons
+D <- smartcard_data$D
+R <- smartcard_data \%>\% 
+  select(starts_with("luminosity_"), starts_with("satellite_"))
+S_e <- !is.na(D) & (rowSums(is.na(R)) == 0)
+S_o <- !is.na(Y) & (rowSums(is.na(R)) == 0)
+clusters <- smartcard_data$clusters
+
+result <- rsv_estimate(
+  Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
+  method = "split",
+  se_params = list(clusters = clusters)
+)
 }
+}
+\seealso{
+\code{\link{remote_vars_p1}}, \code{\link{remote_vars_p2}} for remote 
+sensing features
 }
 \keyword{datasets}

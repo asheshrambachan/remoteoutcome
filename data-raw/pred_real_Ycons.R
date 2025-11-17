@@ -14,9 +14,19 @@ library(remoteoutcome)
 satellite_features <- readRDS(path_to_satellite_features) %>%
   select(-contains("lat"), -contains("lon"))
 
-data("data_real", package = "remoteoutcome")
-data_real <- data_real %>%
-  inner_join(satellite_features, by = "shrid2")
+data("smartcard_data", library="remoteoutcome")
+data("remote_vars_p1", library="remoteoutcome")
+data("remote_vars_p2", library="remoteoutcome")
+force(smartcard_data)
+force(remote_vars_p1)
+force(remote_vars_p2)
+
+# Merge remote variables
+smartcard_data <- smartcard_data %>%
+  inner_join(remote_vars_p1, by="shrid2") %>%
+  inner_join(remote_vars_p2, by="shrid2")
+
+data_real <- create_data_real(smartcard_data)
 
 Y <- data_real$Ycons
 D <- data_real$D

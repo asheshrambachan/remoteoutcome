@@ -64,8 +64,8 @@ This dataset was generated using the following procedure:
         for both training and prediction)
       \item Fitted four random forest models using \code{ranger}:
         \itemize{
-          \item \code{pred_Y}: \eqn{E[Y \mid R, S_o = 1]} fitted on observational sample
-          \item \code{pred_D}: \eqn{E[D \mid R, S_e = 1]} fitted on experimental sample
+          \item \code{pred_Y}: \eqn{P(Y = 1 \mid R, S_o = 1)} fitted on observational sample
+          \item \code{pred_D}: \eqn{P(D = 1 \mid R, S_e = 1)} fitted on experimental sample
           \item \code{pred_S_e}: \eqn{P(S_e = 1 \mid R)} fitted on full sample
           \item \code{pred_S_o}: \eqn{P(S_o = 1 \mid R)} fitted on full sample
         }
@@ -92,7 +92,7 @@ The dataset has one attribute:
 
 \examples{
 # Load the dataset
-data(pred_real_Ycons, package = "remoteoutcome")
+data("pred_real_Ycons", package = "remoteoutcome")
 
 # Examine structure
 str(pred_real_Ycons)

@@ -6,6 +6,7 @@
 #' @importFrom dplyr %>% mutate case_when if_else select starts_with
 NULL
 
+
 #' Create Real Experimental/Observational Split Dataset
 #'
 #' Transforms \code{smartcard_data} into the real experimental/observational split 

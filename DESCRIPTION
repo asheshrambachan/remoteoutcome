@@ -15,7 +15,6 @@ Description: Provides tools for estimating treatment effects using remotely
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
-LazyDataCompression:xz
 Depends:
     R (>= 4.0.0)
 Imports:

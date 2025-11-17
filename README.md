@@ -127,10 +127,24 @@ machine learning procedures. See Rambachan, Singh and Viviano (2025) for more di
 
 ```r
 result <- rsv_estimate(
-  Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
+  Y = Y,
+  D = D,
+  S_e = S_e,
+  S_o = S_o,
+  R = R,
+  eps = 1e-2,
   method = "none",
-  ml_params = list(seed = 42),
-  se_params = list(fix_seed = TRUE, clusters = clusters), 
+  ml_params = list(       # Customize random forest parameters:
+    ntree = 100,          #   Number of trees
+    classwt_Y = c(10, 1), #   Class weights for PRED_Y model
+    seed = 42             #   A random seed for each RF for reproducibility
+  ),
+  se = TRUE,
+  se_params = list(       # Customize cluster-bootstrap standard errors:
+    B = 1000,             #   Number of bootstrap replications
+    clusters = clusters,  #   Cluster identifiers for clustered sampling, if not provided, use individual-level bootstrap
+    fix_seed = TRUE       #   Enables deterministic seeding for reproducibility 
+    ),
   cores = 7
 )
 
@@ -146,6 +160,11 @@ print(result)
 #>   Both: 2929
 #> 
 #> Method: none
+
+# 90% confidence interval
+confint(result, level = 0.90)
+#>         5.0 %      95.0 %
+#> D -0.03319573 0.006176239
 ```
 
 ## User-Provided Predictions in `remoteoutcome`
@@ -193,80 +212,6 @@ print(result)
 #> Method: predictions
 ```
 
-## Quick Start Example of `remoteoutcome`
-
-We provide a brief illustration of how ``remoteoutcome'' can be used to estimate
-treatment effects. 
-
-#### Load sample data
-
-```r
-library(dplyr)
-library(remoteoutcome)
-data("smartcard_data", package = "remoteoutcome")
-
-data_real <- create_data_real(smartcard_data)
-
-Y <- data_real$Ycons # binary outcome
-D <- data_real$D # binary treatment
-R <- data_real %>% select(starts_with("luminosity"), starts_with("satellite")) # remotely sensed variable
-S_e <- !is.na(D) & (rowSums(is.na(R)) == 0) # experimental sample indicator (Observe D, R)
-S_o <- !is.na(Y) & (rowSums(is.na(R)) == 0) #  observational sample indicator (Observe Y, R)
-clusters <- data_real$clusters # Subdistrict-level cluster identifiers
-```
-
-### Basic Example
-
-```r
-# Estimate treatment effect
-result <- rsv_estimate(
-  Y = Y,
-  D = D,
-  S_e = S_e,
-  S_o = S_o,
-  R = R,
-  eps = 1e-2,
-  method = "none",
-  ml_params = list(       # Customize random forest parameters:
-    ntree = 100,          #   Number of trees
-    classwt_Y = c(10, 1), #   Class weights for PRED_Y model
-    seed = 42             #   A random seed for each RF for reproducibility
-  ),
-  se = TRUE,
-  se_params = list(       # Customize cluster-bootstrap standard errors:
-    B = 1000,             #   Number of bootstrap replications
-    clusters = clusters,  #   Cluster identifiers for clustered sampling, if not provided, use individual-level bootstrap
-    fix_seed = TRUE       #   Enables deterministic seeding for reproducibility 
-    ),
-  cores = 7
-)
-
-summary(result)
-#> RSV Treatment Effect Estimate
-#> ==============================
-#> 
-#> Coefficient:
-#>   Estimate Std.Error t.value Pr..t.
-#> D -0.01351   0.01197  -1.129  0.259
-#> 
-#> Sample sizes:
-#>   Experimental: 6055
-#>   Observational: 5186
-#>   Both: 2929
-#> 
-#> Prediction fitting method: none
-#> 
-#> Call:
-#> rsv_estimate(Y = Y, D = D, S_e = S_e, S_o = S_o, R = R, eps = 0.01, 
-#>     method = "none", ml_params = list(ntree = 100, classwt_Y = c(10, 
-#>         1), seed = 42), se = TRUE, se_params = list(B = 1000, 
-#>         clusters = clusters, fix_seed = TRUE), cores = 7)
-
-# 90% confidence interval
-confint(result, level = 0.90)
-#>         5.0 %      95.0 %
-#> D -0.03319573 0.006176239
-```
 
 ## Planned Features for `remoteoutcome`
 

@@ -7,7 +7,7 @@
 count_marginals(observations)
 }
 \arguments{
-\item{x}{A data frame with columns \code{D}, \code{Y}, \code{S_e}, and \code{S_o}
+\item{observations}{A data frame with columns \code{D}, \code{Y}, \code{S_e}, and \code{S_o}
 containing observed or predicted values.}
 }
 \value{

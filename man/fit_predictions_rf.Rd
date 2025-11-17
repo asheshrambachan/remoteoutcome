@@ -4,7 +4,16 @@
 \alias{fit_predictions_rf}
 \title{Fit predictions using random forest}
 \usage{
-fit_predictions_rf(R, Y, D, S_e, S_o, R_pred = NULL, ml_params = list())
+fit_predictions_rf(
+  R,
+  Y,
+  D,
+  S_e,
+  S_o,
+  R_pred = NULL,
+  ml_params = list(),
+  cores = 1
+)
 }
 \arguments{
 \item{R}{Remotely sensed variable.}
@@ -24,11 +33,12 @@ fit_predictions_rf(R, Y, D, S_e, S_o, R_pred = NULL, ml_params = list())
   \item{ntree}{Number of trees}
   \item{classwt_Y}{Class weights for \code{pred_Y} model; default \code{c(10, 1)})}
   \item{seed}{User specified seed passed to each \code{ranger} function for reproducibility; default \code{NULL}}
-  \item{cores}{Number of cores used by `ranger` for parallel training; default \code{1}}
 }}
+
+\item{cores}{Number of cores used by `ranger` for parallel training; default \code{1}}
 }
 \value{
-A list containing: :
+A list containing:
   \describe{
     \item{theta_init}{Initial estimate of the treatment effect}
     \item{predictions}{A data frame with columns: \code{pred_Y}}, \code{pred_D}, \code{pred_S_e}, \code{pred_S_o}

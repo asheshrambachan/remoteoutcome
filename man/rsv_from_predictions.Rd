@@ -29,9 +29,9 @@ rsv_from_predictions(
 
 \item{S_o}{Observational sample indicator (0 or 1).}
 
-\item{pred_Y}{(Optional) Predicted \eqn{P[Y \mid R, S_o = 1]}, \eqn{\text{PRED}_Y(R)}. If provided, other predictions must also be provided.}
+\item{pred_Y}{(Optional) Predicted \eqn{P(Y \mid R, S_o = 1)}, \eqn{\text{PRED}_Y(R)}. If provided, other predictions must also be provided.}
 
-\item{pred_D}{(Optional) Predicted \eqn{P[D \mid R, S_e = 1]}, \eqn{\text{PRED}_D(R)}.}
+\item{pred_D}{(Optional) Predicted \eqn{P(D \mid R, S_e = 1)}, \eqn{\text{PRED}_D(R)}.}
 
 \item{pred_S_e}{(Optional) Predicted \eqn{P(S_e = 1 \mid R)}, \eqn{\text{PRED}_{S_e}(R)}.}
 
@@ -46,7 +46,6 @@ rsv_from_predictions(
   \item{ntree}{Number of trees}
   \item{classwt_Y}{Class weights for \code{pred_Y} model; default \code{c(10, 1)})}
   \item{seed}{User specified seed passed to each \code{ranger} function for reproducibility; default \code{NULL}}
-  \item{cores}{Number of cores used by `ranger` for parallel training; default \code{1}}
   \item{nfolds}{Number of folds for cross-fitting (default \code{5}).}
   \item{train_ratio}{Proportion for training in sample split (default \code{0.5}).}
 }}
@@ -57,7 +56,6 @@ rsv_from_predictions(
 \describe{
   \item{B}{Number of bootstrap replications (default \code{1000})}
   \item{fix_seed}{If \code{TRUE}, deterministic seeding is used with `set.seed(b)` for the *b*‑th replication (default \code{FALSE})}
-  \item{cores}{Number of cores for bootstrap replications (default \code{1}).}
   \item{clusters}{Clusters for the bootstrap. If \code{NULL}, uses individual-level bootstrap}
 }}
 }

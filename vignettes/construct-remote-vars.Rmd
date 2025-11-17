@@ -1,0 +1,295 @@
+---
+title: "Constructing Remote Sensed Variables"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Constructing Remote Sensed Variables}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+# Overview
+
+This vignette demonstrates how to construct remote sensed variables by combining:
+
+1. **SHRUG location data**: Village-level geographic boundaries in India
+2. **VIIRS nighttime lights**: Satellite-derived luminosity measurements (2012-2021)
+3. **MOSAIKS satellite features**: 4,000-dimensional CNN features from Planet imagery
+
+These remote sensed variables serve as the $R$ covariates in the RSV estimation framework, enabling treatment effect estimation when treatment and outcomes are observed in separate samples.
+
+For simplicity, this vignette demonstrate this for a sample of 5 shrids only.
+
+# Prerequisites
+
+## Required Packages
+
+```{r setup}
+library(dplyr)
+library(readr)
+library(haven)
+library(tidyr)
+library(sf)
+library(geosphere)
+library(redivis)
+library(kableExtra)
+```
+
+## Data Access
+
+You will need:
+
+- **SHRUG shapefiles**: Download from [devdatalab.org/shrug_download](https://www.devdatalab.org/shrug_download)
+- **VIIRS data**: Available through Harvard Dataverse (accessed via API in this vignette)
+- **MOSAIKS features**: Queried through the Redivis API
+
+# Step 1: Setup paths and select shrid IDs
+
+```{r shrid_ids}
+# Load SHRUG shapefiles (adjust path to your download)
+shrug_shapefile <- "../data-raw/shrug-shrid-poly-gpkg/shrid2_open.gpkg"
+
+# Path to save remote_vars
+path_to_remote_vars = "../data-raw/remote_vars_5.rda"
+
+# Number of shirds
+n_shrid = 5
+
+# Load base data (included in package)
+data(smartcard_data, package = "remoteoutcome")
+smartcard_data <- smartcard_data %>%
+  slice(1:n_shrid)
+
+shrid_ids <- unique(smartcard_data$shrid2)
+```
+
+# Step 2: Query VIIRS Nighttime Lights
+
+VIIRS provides nighttime luminosity measurements at ~500m resolution. We extract annual statistics (min, max, mean, sum) for 2012-2021.
+
+```{r viirs}
+# Load VIIRS data from Harvard Dataverse
+viirs_annual <- read_dta(
+  "https://dataverse.harvard.edu/api/access/datafile/10742856"
+) %>%
+  filter(
+    shrid2 %in% shrid_ids,
+    year %in% 2012:2021,
+    category == "median-masked"
+  ) %>%
+  rename_with(~ sub("viirs_annual", "luminosity", .x)) %>%
+  select(-category) %>%
+  pivot_wider(
+    id_cols = shrid2,
+    names_from = year,
+    values_from = c(
+      luminosity_min,
+      luminosity_max,
+      luminosity_mean,
+      luminosity_sum,
+      luminosity_num_cells
+    ),
+    names_sep = "."
+  )
+
+viirs_annual %>% 
+  select(shrid2, luminosity_min.2012, luminosity_min.2013, luminosity_max.2012, luminosity_max.2013, luminosity_num_cells.2012, luminosity_num_cells.2013) %>%
+  kable(format = "markdown", digits = 3, caption = "VIIRS Luminosity Data") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+The resulting dataset contains 50 columns:
+- 10 years × 5 statistics = 50 luminosity features per village
+
+
+# Step 3: Query MOSAIKS Satellite Features
+
+MOSAIKS provides 4,000 pre-computed satellite imagery features derived from convolutional neural networks applied to Planet imagery.
+
+
+## 3.1 Load SHRUG Location Data
+
+SHRUG provides village-level administrative boundaries for all of India. We filter to Andhra Pradesh and villages in the smartcard study.
+
+```{r shrug}
+shrids <- st_read(shrug_shapefile, quiet = TRUE) %>%
+  filter(shrid2 %in% shrid_ids)
+
+# Compute village centroids
+centroids <- st_centroid(st_make_valid(shrids))
+coords <- st_coordinates(centroids)
+
+centroid_coords <- shrids %>%
+  mutate(
+    centroid_lon = coords[, 1], 
+    centroid_lat = coords[, 2]
+  ) %>%
+  as.data.frame() %>%
+  select(shrid2, centroid_lat, centroid_lon) %>%
+  arrange(shrid2)
+
+head(centroid_coords) %>%
+  kable(format = "markdown", digits = 3, caption = "Centroids from SHRUG Data") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## 3.2: Set Up Redivis Connection
+
+The code below will open a new window in your browser to authenticate Redivis R Client.
+
+```{r mosaiks-setup}
+# Connect to MOSAIKS dataset on Redivis
+dataset <- redivis::redivis$organization("SDSS_data_repository")$
+  dataset("mosaiks:8bqm")
+
+# Create bounding box for spatial query
+buffer <- 0.05  # degrees
+lon_min <- round(min(centroid_coords$centroid_lon), 2) - buffer
+lon_max <- round(max(centroid_coords$centroid_lon), 2) + buffer
+lat_min <- round(min(centroid_coords$centroid_lat), 2) - buffer
+lat_max <- round(max(centroid_coords$centroid_lat), 2) + buffer
+
+condition_str <- sprintf(
+  "(lon >= %s AND lon <= %s) AND (lat >= %s AND lat <= %s)",
+  lon_min, lon_max, lat_min, lat_max
+)
+```
+
+## 3.3: Match Villages to MOSAIKS Grid
+
+MOSAIKS uses a regular grid. We match each village centroid to the nearest MOSAIKS grid cell (within 1km).
+
+```{r mosaiks-match}
+# Query MOSAIKS coordinates within bounding box
+query <- dataset$query(sprintf("
+  SELECT lon, lat
+  FROM mosaiks_2019_planet:ergr
+  WHERE %s
+", condition_str))
+
+mosaik_coords <- query$to_tibble()
+
+# Match each village to nearest MOSAIKS coordinate
+# Process in chunks for memory efficiency
+chunk_size <- 100
+num_chunks <- ceiling(nrow(centroid_coords) / chunk_size)
+chunks <- list()
+
+for (i in seq_len(num_chunks)) {
+  cat(sprintf("Matching chunk %d of %d\n", i, num_chunks))
+  
+  start_row <- (i - 1) * chunk_size + 1
+  end_row <- min(i * chunk_size, nrow(centroid_coords))
+  chunk <- centroid_coords[start_row:end_row, ]
+  
+  # Compute distance matrix (Haversine distance)
+  dist_matrix <- distm(
+    chunk %>% select(centroid_lon, centroid_lat) %>% as.matrix(),
+    mosaik_coords %>% as.matrix(),
+    fun = distHaversine
+  )
+  
+  # Find nearest MOSAIKS coordinate
+  min_idx <- apply(dist_matrix, 1, which.min)
+  min_dist_km <- dist_matrix[cbind(1:nrow(dist_matrix), min_idx)] / 1000
+  
+  chunk <- chunk %>%
+    mutate(
+      lat = mosaik_coords$lat[min_idx],
+      lon = mosaik_coords$lon[min_idx],
+      distance_km = min_dist_km
+    )
+  
+  chunks[[i]] <- chunk
+}
+
+coordinates <- bind_rows(chunks) %>%
+  filter(distance_km <= 1) %>%  # Keep only matches within 1km
+  select(-distance_km)
+
+cat(sprintf("Matched %d of %d villages to MOSAIKS grid\n", 
+            nrow(coordinates), nrow(centroid_coords)))
+```
+
+## 3.4: Download Feature Vectors
+
+```{r mosaiks-features}
+# Download features in chunks
+chunk_size <- 1000
+num_chunks <- ceiling(nrow(coordinates) / chunk_size)
+chunks <- list()
+
+for (i in seq_len(num_chunks)) {
+  cat(sprintf("Querying features for chunk %d of %d\n", i, num_chunks))
+  
+  start_row <- (i - 1) * chunk_size + 1
+  end_row <- min(i * chunk_size, nrow(coordinates))
+  chunk <- coordinates[start_row:end_row, ]
+  
+  # Build WHERE clause for this chunk
+  where_clause <- apply(chunk, 1, function(row) {
+    sprintf("(lon = %s AND lat = %s)", row["lon"], row["lat"])
+  }) %>%
+    paste(collapse = " OR ")
+  
+  # Query feature vectors
+  query <- dataset$query(sprintf("
+    SELECT * EXCEPT(shapeGroup, adm1_shapeID_geoBoundaries, 
+                    adm2_shapeID_geoBoundaries)
+    FROM mosaiks_2019_planet:ergr
+    WHERE %s
+  ", where_clause))
+  
+  # Rename feature columns
+  colnames(features)[grep("X_", colnames(features))] <- 
+    paste0("satellite_", 1:4000)
+  
+  chunks[[i]] <- left_join(chunk, features, by = c("lat", "lon"))
+}
+
+satellite_features <- bind_rows(chunks) %>%
+  select(shrid2, starts_with("satellite_"))
+
+satellite_features[1:6] %>%
+  head() %>%
+  kable(format = "markdown", digits = 3, caption = "Features from MOSIAKS Data") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+The resulting dataset contains 4,001 columns: `shrid2`, and the 4,000 satellite feature columns
+
+# Step 4: Combine All Remote Sensed Variables
+
+```{r combine}
+# Merge all remote sensed variables
+remote_vars <- viirs_annual %>%
+  inner_join(satellite_features, by = "shrid2")
+
+# Summary
+cat(sprintf("Final dataset: %d villages × %d features\n", 
+            nrow(remote_vars), ncol(remote_vars)))
+cat(sprintf("  - VIIRS features: %d\n",  ncol(viirs_annual %>% select(-shrid2))))
+cat(sprintf("  - MOSAIKS features: %d\n",  ncol(satellite_features %>% select(-shrid2))))
+```
+
+# Step 5: Save Results
+
+```{r save}
+# Save
+# save(remote_vars, file = path_to_satellite_features, compress = "bzip2")
+```
+
+# References
+
+- **SHRUG**: Asher, S., Lunt, T., Matsuura, R., & Novosad, P. (2021). Development research at high geographic resolution: An analysis of night-lights, firms, and poverty in India using the SHRUG open data platform. *The World Bank Economic Review*, 35(4), 845-871.
+
+- **MOSAIKS**: Rolf, E., Proctor, J., Carleton, T., Bolliger, I., Shankar, V., Ishihara, M., Recht, B., & Hsiang, S. (2021). A generalizable and accessible approach to machine learning with global satellite imagery. *Nature Communications*, 12, 4392.
+
+- **VIIRS**: Data available through SHRUG repository at Harvard Dataverse.

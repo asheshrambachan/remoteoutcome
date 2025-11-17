@@ -9,7 +9,8 @@ rsv_bootstrap(
   predictions,
   theta_init,
   eps = 0.01,
-  se_params = list(B = 1000, fix_seed = FALSE, cores = 1, clusters = NULL)
+  se_params = list(B = 1000, fix_seed = FALSE, clusters = NULL),
+  cores = 1
 )
 }
 \arguments{
@@ -37,9 +38,10 @@ rsv_bootstrap(
 \describe{
   \item{B}{Number of bootstrap replications (default \code{1000})}
   \item{fix_seed}{If \code{TRUE}, deterministic seeding is used with `set.seed(b)` for the *b*‑th replication (default \code{FALSE})}
-  \item{cores}{Number of cores for bootstrap replications (default \code{1}).}
   \item{clusters}{Clusters for the bootstrap. If \code{NULL}, uses individual-level bootstrap}
 }}
+
+\item{cores}{Number of cores for bootstrap replications (default \code{1}).}
 }
 \value{
 A list with components:

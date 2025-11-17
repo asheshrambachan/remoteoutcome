@@ -45,7 +45,7 @@ summary.rsv <- function(object, ...) {
   # Create coefficient table
   if (!is.null(object$se)) {
     t_stat <- object$coef / object$se
-    p_value <- 2 * (1 - pnorm(abs(t_stat)))
+    p_value <- 2 * (1 - stats::pnorm(abs(t_stat)))
 
     coef_table <- data.frame(
       Estimate = object$coef,
@@ -143,8 +143,8 @@ confint.rsv <- function(object, parm = "D", level = 0.95, ...) {
   }
   
   alpha <- 1 - level
-  ci_lower <- object$coef - object$se * qnorm(1 - alpha / 2)
-  ci_upper <- object$coef + object$se * qnorm(1 - alpha / 2)
+  ci_lower <- object$coef - object$se * stats::qnorm(1 - alpha / 2)
+  ci_upper <- object$coef + object$se * stats::qnorm(1 - alpha / 2)
 
   # Determine column names based on alpha
   lower_pct <- sprintf("%.1f %%", alpha / 2 * 100)

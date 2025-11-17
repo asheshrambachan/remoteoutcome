@@ -49,15 +49,14 @@ library(fixest)
 library(tidyr)
 library(remoteoutcome)
 
-cores <- 7
-
-# Load poverty data (included in package)
-# data
+cores <- parallel::detectCores() - 1
 ```
 
 ```{r tab-data, echo=FALSE}
-data %>% 
-  select(shrid2, clusters, wave, D, Ylowinc, Ymidinc, Ycons, luminosity_max.2012, luminosity_max.2013, satellite_1, satellite_2) %>%
+data("smartcard_data", package = "remoteoutcome")
+
+smartcard_data %>% 
+  select(shrid2, clusters, `Sample (Smartcard)`, D, Ylowinc, Ymidinc, Ycons, luminosity_max.2012, luminosity_max.2013, satellite_1, satellite_2) %>%
   group_by(D) %>%
   slice(1:2) %>%
   ungroup() %>%
@@ -67,9 +66,9 @@ data %>%
 ```
 
 ```{r}
-cat(sprintf("Total observations: %d\n", nrow(data)))
+cat(sprintf("Total observations: %d\n", nrow(smartcard_data)))
 cat(sprintf("Number of clusters (subdistricts): %d\n",
-            length(unique(data$clusters))))
+            length(unique(smartcard_data$clusters))))
 ```
 
 The poverty outcomes analyzed in the application are defined as follows:
@@ -79,7 +78,7 @@ The poverty outcomes analyzed in the application are defined as follows:
   - `Ymidinc`: No household members earning more than 10,000 INR per month.
   
 ```{r tab-outcomes, echo=FALSE}
-data %>% 
+smartcard_data %>% 
   select(Ycons, Ylowinc, Ymidinc) %>%
   rename(c("Consumption"=Ycons, "Low Income"=Ylowinc, "Middle Income"=Ymidinc)) %>%
   describe() %>%
@@ -97,7 +96,7 @@ The experiment was implemented in multiple phases, with villages randomly assign
 - **Observational (N/A)**: Non-study or holdout villages excluded from the experiment.
 
 ```{r tab-exp-design, echo=FALSE}
-tab <- data %>% 
+tab <- smartcard_data %>% 
   group_by(`Sample (Smartcard)`) %>%
   summarise(
     `Number of villages`        = n_distinct(shrid2),
@@ -138,24 +137,7 @@ Following the study design, we construct two key sample indicators:
 This creates an overlap where *Experimental: Untreated (2011)* villages are in both samples.
 
 ```{r real-sample-def}
-data_real <- data %>%
-  mutate(
-    # Sample indicator
-    S = case_when(
-      `Sample (Smartcard)` == "Experimental: Treated (2010)" ~ "e", # Experimental only
-      `Sample (Smartcard)` == "Experimental: Untreated (2011)" ~ "both",  # Both samples
-      `Sample (Smartcard)` == "Experimental: Untreated (2012)" ~ "e", # Experimental only
-      `Sample (Smartcard)` == "Observational (N/A)" ~ "o" # Observational only
-    ),
-    
-    # Treatment observed only in experimental sample
-    D = ifelse((S=="both") | (S=="e"), D, NA),
-    
-    # Outcomes observed only in observational sample
-    Ycons = ifelse((S=="both") | (S=="o"), Ycons, NA),
-    Ylowinc = ifelse((S=="both") | (S=="o"), Ylowinc, NA),
-    Ymidinc = ifelse((S=="both") | (S=="o"), Ymidinc, NA)
-  )
+data_real <- create_data_real(smartcard_data)
 ```
 
 ```{r tab-realS, echo = FALSE}
@@ -196,13 +178,12 @@ Key arguments in this example:
   - `ntree = 100`: Number of trees.
   - `classwt_Y`: Weights for classes `Y=0` and `Y=1` for the \(\text{PRED}_Y(R)\) model.
   - `seed`: User specified seed passed to each `ranger` function for reproducibility
-  - `cores`: Number of cores used by `ranger` for parallel training.
 - `se = TRUE`: Requests bootstrap-based standard errors with cluster resampling.
 - `se_params`: Controls bootstrap settings:
   - `B = 1000`: Number of bootstrap replications.
   - `clusters`: Subdistrict-level cluster identifiers.
   - `fix_seed = TRUE`: Ensures deterministic seeding for reproducibility.
-  - `cores`: Number of cores used for parallel bootstrap computation.
+- `cores`: Number of cores used by either `ranger` or bootstrap computation.
 
 ```{r rsv-real-Ycons, message=FALSE}
 # Consumption poverty
@@ -217,13 +198,14 @@ rsv_real_Ycons <- rsv_estimate(
   Y = Y,
   D = D,
   R = R,
-  S_e = !is.na(D) & (rowSums(is.na(R)) == 0),
-  S_o = !is.na(Y) & (rowSums(is.na(R)) == 0),
+  S_e = S_e,
+  S_o = S_o,
   eps = 1e-2,
   method = "none",
-  ml_params = list(ntree = 100, classwt_Y = c(10, 1), seed=42, cores = cores),
+  ml_params = list(ntree = 100, classwt_Y = c(10, 1), seed=42),
   se = TRUE,
-  se_params = list(B = 1000, fix_seed = TRUE, cores = cores, clusters = clusters),
+  se_params = list(B = 1000, fix_seed = TRUE, clusters = clusters),
+  cores = cores
 )
 print(rsv_real_Ycons)
 ```
@@ -241,13 +223,14 @@ rsv_real_Ylowinc <- rsv_estimate(
   Y = Y,
   D = D,
   R = R,
-  S_e = !is.na(D) & (rowSums(is.na(R)) == 0),
-  S_o = !is.na(Y) & (rowSums(is.na(R)) == 0),
+  S_e = S_e,
+  S_o = S_o,
   eps = 1e-2,
   method = "none",
-  ml_params = list(ntree = 100, classwt_Y = c(10, 1), seed=42, cores = cores),
+  ml_params = list(ntree = 100, classwt_Y = c(10, 1), seed=42),
   se = TRUE,
-  se_params = list(B = 1000, fix_seed = TRUE, cores = cores, clusters = clusters),
+  se_params = list(B = 1000, fix_seed = TRUE, clusters = clusters),
+  cores = cores
 )
 print(rsv_real_Ylowinc)
 ```
@@ -269,9 +252,10 @@ rsv_real_Ymidinc <- rsv_estimate(
   S_o = S_o,
   eps = 1e-2,
   method = "none",
-  ml_params = list(ntree = 100, classwt_Y = c(10, 1), seed=42, cores = cores),
+  ml_params = list(ntree = 100, classwt_Y = c(10, 1), seed=42),
   se = TRUE,
-  se_params = list(B = 1000, fix_seed = TRUE, cores = cores, clusters = clusters),
+  se_params = list(B = 1000, fix_seed = TRUE, clusters = clusters),
+  cores = cores
 )
 print(rsv_real_Ymidinc)
 ```
@@ -290,35 +274,7 @@ In this synthetic specification:
 - **Observational sample** (\(S_o\)): Villages located within the first 50% of clusters (subdistricts).
 
 ```{r synth-sample-def}
-# Assign half the clusters to observational sample
-obs_clusters <- unique(data$clusters)[1:floor(length(unique(data$clusters)) / 2)]
-
-data_synth <- data %>%
-  mutate(
-    # Sample indicators
-    S_e = `Sample (Smartcard)` %in% c(
-      "Experimental: Treated (2010)", 
-      "Experimental: Untreated (2011)", 
-      "Experimental: Untreated (2012)"
-    ), # Experimental sample (has D)
-    
-    S_o = clusters %in% obs_clusters, # Synthetic observational sample
-
-    # Sample indicator for rsv_estimate (categorical)
-    S = case_when(
-      S_e & S_o ~ "both",    # Both samples
-      S_e & !S_o ~ "e",      # Experimental only
-      !S_e & S_o ~ "o"       # Observational only
-    ),
-    
-    # Treatment observed only in experimental sample
-    D = ifelse((S=="both") | (S=="e"), D, NA),
-    
-    # Outcomes observed only in observational sample
-    Ycons = ifelse((S=="both") | (S=="o"), Ycons, NA),
-    Ylowinc = ifelse((S=="both") | (S=="o"), Ylowinc, NA),
-    Ymidinc = ifelse((S=="both") | (S=="o"), Ymidinc, NA)
-  )
+data_synth <- create_data_synth(smartcard_data)
 ```
 
 ```{r tab-synthS, echo = FALSE}
@@ -365,9 +321,10 @@ rsv_synth_Ycons <- rsv_estimate(
   S_o = S_o,
   eps = 1e-2,
   method = "none",
-  ml_params = list(ntree = 100, classwt_Y = c(10, 1), seed=42, cores = cores),
+  ml_params = list(ntree = 100, classwt_Y = c(10, 1), seed=42),
   se = TRUE,
-  se_params = list(B = 1000, fix_seed = TRUE, cores = cores, clusters = clusters),
+  se_params = list(B = 1000, fix_seed = TRUE, clusters = clusters),
+  cores = cores
 )
 print(rsv_synth_Ycons)
 ```
@@ -389,9 +346,10 @@ rsv_synth_Ylowinc <- rsv_estimate(
   S_o = S_o,
   eps = 1e-2,
   method = "none",
-  ml_params = list(ntree = 100, classwt_Y = c(10, 1), seed=42, cores = cores),
+  ml_params = list(ntree = 100, classwt_Y = c(10, 1), seed=42),
   se = TRUE,
-  se_params = list(B = 1000, fix_seed = TRUE, cores = cores, clusters = clusters),
+  se_params = list(B = 1000, fix_seed = TRUE, clusters = clusters),
+  cores = cores
 )
 print(rsv_synth_Ylowinc)
 ```
@@ -401,21 +359,22 @@ print(rsv_synth_Ylowinc)
 Y <- data_synth$Ymidinc
 D <- data_synth$D
 R <- data_synth %>% select(starts_with("luminosity"), starts_with("satellite"))
-S_e <- S_e
-S_o <- S_o
+S_e <- !is.na(D) & (rowSums(is.na(R)) == 0)
+S_o <- !is.na(Y) & (rowSums(is.na(R)) == 0)
 clusters <- data_synth$clusters
 
 rsv_synth_Ymidinc <- rsv_estimate(
   Y = Y,
   D = D,
   R = R,
-  S_e = !is.na(D) & (rowSums(is.na(R)) == 0),
-  S_o = !is.na(Y) & (rowSums(is.na(R)) == 0),
+  S_e = S_e,
+  S_o = S_o,
   eps = 1e-2,
   method = "none",
-  ml_params = list(ntree = 100, classwt_Y = c(10, 1), seed=42, cores = cores),
+  ml_params = list(ntree = 100, classwt_Y = c(10, 1), seed=42),
   se = TRUE,
-  se_params = list(B = 1000, fix_seed = TRUE, cores = cores, clusters = clusters),
+  se_params = list(B = 1000, fix_seed = TRUE, clusters = clusters),
+  cores = cores
 )
 print(rsv_synth_Ymidinc)
 ```
@@ -427,7 +386,7 @@ For comparison, we estimate the treatment effect using **only** the experimental
 
 ```{r benchmark-Ycons, message=FALSE}
 # Filter to experimental sample with observed outcomes
-data_exp_Ycons <- data %>%
+data_exp_Ycons <- smartcard_data %>%
   filter(
     !is.na(D),
     !is.na(Ycons)
@@ -441,7 +400,7 @@ summary(benchmark_Ycons)
 
 ```{r benchmark-Ylowinc, message=FALSE}
 # Filter to experimental sample with observed outcomes
-data_exp_Ylowinc <- data %>%
+data_exp_Ylowinc <- smartcard_data %>%
   filter(
     !is.na(D),
     !is.na(Ylowinc)
@@ -455,7 +414,7 @@ summary(benchmark_Ylowinc)
 
 ```{r benchmark-Ymidinc, message=FALSE}
 # Filter to experimental sample with observed outcomes
-data_exp_Ymidinc <- data %>%
+data_exp_Ymidinc <- smartcard_data %>%
   filter(
     !is.na(D),
     !is.na(Ymidinc)

@@ -52,11 +52,25 @@ remotely sensed variable on K-1 folds, and predicts on the held-out fold. It the
 iterates across folds.
 
 ```r
+library(dplyr)
+library(remoteoutcome)
+
+# Load sample data
+data("data_real", package = "remoteoutcome")
+
+Y <- data_real$Ycons # binary outcome
+D <- data_real$D # binary treatment
+R <- data_real %>% select(starts_with("luminosity"), starts_with("satellite")) # remotely sensed variable
+S_e <- !is.na(D) & (rowSums(is.na(R)) == 0) # experimental sample indicator (Observe D, R)
+S_o <- !is.na(Y) & (rowSums(is.na(R)) == 0) #  observational sample indicator (Observe Y, R)
+clusters <- data_real$clusters # Subdistrict-level cluster identifiers
+
 result <- rsv_estimate(
   Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
   method = "crossfit",
-  ml_params = list(nfold = 5, seed = 42, cores = 7),
-  se_params = list(fix_seed = TRUE, clusters = clusters)
+  ml_params = list(nfold = 5, seed = 42),
+  se_params = list(fix_seed = TRUE, clusters = clusters), 
+  cores = 7
 )
 
 print(result)
@@ -78,8 +92,9 @@ to construct the estimator.
 result <- rsv_estimate(
   Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
   method = "split",
-  ml_params = list(train_ratio = 0.5, seed = 42, cores = 7),
-  se_params = list(fix_seed = TRUE, clusters = clusters)
+  ml_params = list(train_ratio = 0.5, seed = 42),
+  se_params = list(fix_seed = TRUE, clusters = clusters), 
+  cores = 7
 )
 
 print(result)
@@ -108,8 +123,9 @@ machine learning procedures. See Rambachan, Singh and Viviano (2025) for more di
 result <- rsv_estimate(
   Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
   method = "none",
-  ml_params = list(seed = 42, cores = 7),
-  se_params = list(fix_seed = TRUE, clusters = clusters, cores = 7)
+  ml_params = list(seed = 42),
+  se_params = list(fix_seed = TRUE, clusters = clusters), 
+  cores = 7
 )
 
 print(result)
@@ -137,7 +153,9 @@ If you have your own fitted predictions, provide them directly:
 
 ```r
 # Fit your own models to obtain predictions. 
-# Example data: pred_real_Ycons (included in package)
+# Load sample data
+data("pred_real_Ycons", package = "remoteoutcome")
+
 result <- rsv_estimate(
   Y = pred_real_Ycons$Y,
   D = pred_real_Ycons$D,
@@ -147,22 +165,25 @@ result <- rsv_estimate(
   pred_D = pred_real_Ycons$pred_D,
   pred_S_e = pred_real_Ycons$pred_S_e,
   pred_S_o = pred_real_Ycons$pred_S_o,
+  theta_init = -0.03220447,
+  method = "predictions",
   se = TRUE,
-  se_params = list(B = 1000, fix_seed = TRUE, cores = 7, clusters = pred_real_Ycons$clusters),
+  se_params = list(B = 1000, fix_seed = TRUE, clusters = pred_real_Ycons$clusters),
+  cores = 7
 )
 
 print(result)
 #> RSV Treatment Effect Estimate
 #> ==============================
 #> 
-#> Coefficient: -0.0127 (SE: 0.0095)
+#> Coefficient: -0.0135 (SE: 0.0120)
 #> 
 #> Sample sizes:
 #>   Experimental: 6055
 #>   Observational: 5186
 #>   Both: 2929
 #> 
-#> Method: none
+#> Method: predictions
 ```
 
 ## Quick Start Example of `remoteoutcome`
@@ -175,8 +196,8 @@ treatment effects.
 ```r
 library(dplyr)
 library(remoteoutcome)
+data("data_real", package = "remoteoutcome")
 
-# Example data: data_real (included in package)
 Y <- data_real$Ycons # binary outcome
 D <- data_real$D # binary treatment
 R <- data_real %>% select(starts_with("luminosity"), starts_with("satellite")) # remotely sensed variable
@@ -201,15 +222,14 @@ result <- rsv_estimate(
     ntree = 100,          #   Number of trees
     classwt_Y = c(10, 1), #   Class weights for PRED_Y model
     seed = 42,            #   A random seed for each RF for reproducibility
-    cores = 7             #   Number of cores used for training
   ),
   se = TRUE,
   se_params = list(       # Customize cluster-bootstrap standard errors:
     B = 1000,             #   Number of bootstrap replications
     clusters = clusters,  #   Cluster identifiers for clustered sampling, if not provided, use individual-level bootstrap
     fix_seed = TRUE,      #   Enables deterministic seeding for reproducibility 
-    cores = 7             #   Number of cores for bootstrap replications
-    )
+    ),
+  cores = 7
 )
 
 summary(result)
@@ -230,8 +250,8 @@ summary(result)
 #> Call:
 #> rsv_estimate(Y = Y, D = D, S_e = S_e, S_o = S_o, R = R, eps = 0.01, 
 #>     method = "none", ml_params = list(ntree = 100, classwt_Y = c(10, 
-#>         1), seed = 42, cores = 7), se = TRUE, se_params = list(B = 1000, 
-#>         clusters = clusters, fix_seed = TRUE, cores = 7))
+#>         1), seed = 42), se = TRUE, se_params = list(B = 1000, 
+#>         clusters = clusters, fix_seed = TRUE), cores = 7)
 
 # 90% confidence interval
 confint(result, level = 0.90)

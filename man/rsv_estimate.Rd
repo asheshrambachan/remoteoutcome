@@ -16,10 +16,11 @@ rsv_estimate(
   pred_S_o = NULL,
   theta_init = NULL,
   eps = 0.01,
-  method = c("crossfit", "split", "none", "predict-only"),
+  method = c("crossfit", "split", "none", "predictions"),
   ml_params = list(),
   se = TRUE,
-  se_params = list()
+  se_params = list(),
+  cores = 1
 )
 }
 \arguments{
@@ -33,9 +34,9 @@ rsv_estimate(
 
 \item{R}{Remotely sensed variable. Required if predictions are not provided.}
 
-\item{pred_Y}{(Optional) Predicted \eqn{P[Y \mid R, S_o = 1]}, \eqn{\text{PRED}_Y(R)}. If provided, other predictions must also be provided.}
+\item{pred_Y}{(Optional) Predicted \eqn{P(Y \mid R, S_o = 1)}, \eqn{\text{PRED}_Y(R)}. If provided, other predictions must also be provided.}
 
-\item{pred_D}{(Optional) Predicted \eqn{P[D \mid R, S_e = 1]}, \eqn{\text{PRED}_D(R)}.}
+\item{pred_D}{(Optional) Predicted \eqn{P(D \mid R, S_e = 1)}, \eqn{\text{PRED}_D(R)}.}
 
 \item{pred_S_e}{(Optional) Predicted \eqn{P(S_e = 1 \mid R)}, \eqn{\text{PRED}_{S_e}(R)}.}
 
@@ -53,7 +54,6 @@ rsv_estimate(
   \item{ntree}{Number of trees}
   \item{classwt_Y}{Class weights for \code{pred_Y} model; default \code{c(10, 1)})}
   \item{seed}{User specified seed passed to each \code{ranger} function for reproducibility; default \code{NULL}}
-  \item{cores}{Number of cores used by `ranger` for parallel training; default \code{1}}
   \item{nfolds}{Number of folds for cross-fitting (default \code{5}).}
   \item{train_ratio}{Proportion for training in sample split (default \code{0.5}).}
 }}
@@ -64,9 +64,10 @@ rsv_estimate(
 \describe{
   \item{B}{Number of bootstrap replications (default \code{1000})}
   \item{fix_seed}{If \code{TRUE}, deterministic seeding is used with `set.seed(b)` for the *b*‑th replication (default \code{FALSE})}
-  \item{cores}{Number of cores for bootstrap replications (default \code{1}).}
   \item{clusters}{Clusters for the bootstrap. If \code{NULL}, uses individual-level bootstrap}
 }}
+
+\item{cores}{Number of cores used by either `ranger` or bootstrap replications; default \code{1}}
 }
 \value{
 A list of class \code{"rsv"} with components:
@@ -104,37 +105,49 @@ library(dplyr)
 library(remoteoutcome)
 
 # Example data: data_real (included in package)
+path_to_satellite_features <- "path/to/satellite_features.rds"
+satellite_features <- readRDS(path_to_satellite_features) \%>\%
+  select(-contains("lat"), -contains("lon"))
+data("data_real", package = "remoteoutcome")
+data_real <- inner_join(data_real, satellite_features, by = "shrid2")
+
 Y <- data_real$Ycons # binary outcome
 D <- data_real$D # binary treatment
-R <- data_real \%>\% select(starts_with("luminosity"), starts_with("satellite")) # remotely sensed variable
+R <- data_real \%>\% select(
+   starts_with("luminosity"), 
+   starts_with("satellite")
+) # remotely sensed variable
 S_e <- !is.na(D) & (rowSums(is.na(R)) == 0) # experimental sample indicator (Observe D, R)
 S_o <- !is.na(Y) & (rowSums(is.na(R)) == 0) #  observational sample indicator (Observe Y, R)
 clusters <- data_real$clusters # Subdistrict-level cluster identifiers
 
 # Example 1: No sample splitting
 result <- rsv_estimate(
-Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
-method = "none",
-ml_params = list(seed = 42, cores = 7),
-se_params = list(fix_seed = TRUE, clusters = clusters, cores = 7)
+   Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
+   method = "none",
+   ml_params = list(seed = 42),
+   se_params = list(fix_seed = TRUE, clusters = clusters),
+   cores = 7
 )
 print(result)
 
 # Example 2: With sample splitting
 result <- rsv_estimate(
-Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
-method = "split",
-ml_params = list(train_ratio = 0.5, seed = 42, cores = 7),
-se_params = list(fix_seed = TRUE, clusters = clusters)
+   Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
+   method = "split",
+   ml_params = list(train_ratio = 0.5, seed = 42),
+   se_params = list(fix_seed = TRUE, clusters = clusters),
+   cores = 7
 )
 print(result)
 
 # Example 3: With cross fitting
 result <- rsv_estimate(
-Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
-method = "crossfit",
-ml_params = list(nfold = 5, seed = 42, cores = 7),
-se_params = list(fix_seed = TRUE, clusters = clusters)
+  Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
+  method = "crossfit",
+  ml_params = list(nfold = 5, seed = 42),
+  se_params = list(fix_seed = TRUE, clusters = clusters), 
+  cores = 7
 )
 print(result)
 
@@ -151,20 +164,21 @@ result <- rsv_estimate(
     ntree = 100,          #   Number of trees
     classwt_Y = c(10, 1), #   Class weights for PRED_Y model
     seed = 42,            #   A random seed for each RF for reproducibility
-    cores = 7             #   Number of cores used for training
   ),
   se = TRUE,
   se_params = list(       # Customize cluster-bootstrap standard errors:
     B = 1000,             #   Number of bootstrap replications
-    clusters = clusters,  #   Cluster identifiers for clustered sampling, if not provided, use individual-level bootstrap
+    clusters = clusters,  #   Cluster identifiers for clustered sampling
     fix_seed = TRUE,      #   Enables deterministic seeding for reproducibility 
-    cores = 7             #   Number of cores for bootstrap replications
-  )
+  ),
+  cores = 7
 )
 print(result)
 
 # Example 5: User provides fitted predictions
 # Example data: pred_real_Ycons (included in package)
+data("pred_real_Ycons", package = "remoteoutcome")
+
 result <- rsv_estimate(
   Y = pred_real_Ycons$Y,
   D = pred_real_Ycons$D,
@@ -174,8 +188,16 @@ result <- rsv_estimate(
   pred_D = pred_real_Ycons$pred_D,
   pred_S_e = pred_real_Ycons$pred_S_e,
   pred_S_o = pred_real_Ycons$pred_S_o,
+  method = "predictions",
+  theta_init = attr(pred_real_Ycons, "theta_init"),
+  # ml_params = list(
+  #   train_ratio = 0.2,    #   If theta_init is not provided, 20\% of the data
+  #                         #     will be used to estimate theta_init. 
+  #   seed = 42             #   A random seed for each RF for reproducibility
+  # ),
   se = TRUE,
-  se_params = list(B = 1000, fix_seed = TRUE, cores = 7, clusters = pred_real_Ycons$clusters),
+  se_params = list(B = 1000, fix_seed = TRUE, clusters = pred_real_Ycons$clusters),
+  cores = 7
 )
 print(result)
 }

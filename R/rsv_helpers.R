@@ -19,30 +19,29 @@
 #'     \item{ntree}{Number of trees}
 #'     \item{classwt_Y}{Class weights for \code{pred_Y} model; default \code{c(10, 1)})}
 #'     \item{seed}{User specified seed passed to each \code{ranger} function for reproducibility; default \code{NULL}}
-#'     \item{cores}{Number of cores used by `ranger` for parallel training; default \code{1}}
 #'   }
-#'
-#' @return A list containing: :
+#' @param cores Number of cores used by `ranger` for parallel training; default \code{1}
+#' 
+#' @return A list containing:
 #'   \describe{
 #'     \item{theta_init}{Initial estimate of the treatment effect}
 #'     \item{predictions}{A data frame with columns: \code{pred_Y}}, \code{pred_D}, \code{pred_S_e}, \code{pred_S_o}
 #'   }
-#'
+#' 
 #' @keywords internal
-fit_predictions_rf <- function(R, Y, D, S_e, S_o, R_pred = NULL, ml_params = list()) {
+fit_predictions_rf <- function(R, Y, D, S_e, S_o, R_pred = NULL, ml_params = list(), cores = 1) {
   if (is.null(R_pred)) R_pred <- R
   
-  if (class(S_e) == "logical")
+  if (is.logical(S_e))
     S_e <- as.numeric(S_e)
   
-  if (class(S_o) == "logical")
+  if (is.logical(S_o))
     S_o <- as.numeric(S_o)
   
   # Extract ML parameters
   ntree <- ml_params$ntree
   classwt_Y <- ml_params$classwt_Y
   seed <- ml_params$seed
-  cores <- ml_params$cores
 
   # Convert R to matrix if it's a vector
   R_mat <- as.matrix(R)
@@ -99,19 +98,19 @@ fit_predictions_rf <- function(R, Y, D, S_e, S_o, R_pred = NULL, ml_params = lis
   theta_init <- get_theta_init(
     observations = data.frame(Y, D, S_e, S_o),
     predictions = data.frame(
-      Y = predict(model_Y, R_mat)$predictions[,"1"],
-      D = predict(model_D, R_mat)$predictions[,"1"],
-      S_e = predict(model_S_e, R_mat)$predictions[,"1"],
-      S_o = predict(model_S_o, R_mat)$predictions[,"1"]
+      Y = stats::predict(model_Y, R_mat)$predictions[,"1"],
+      D = stats::predict(model_D, R_mat)$predictions[,"1"],
+      S_e = stats::predict(model_S_e, R_mat)$predictions[,"1"],
+      S_o = stats::predict(model_S_o, R_mat)$predictions[,"1"]
     )
   )
 
   # Generate predictions
   predictions <- data.frame(
-    Y = predict(model_Y, R_pred_mat)$predictions[,"1"],
-    D = predict(model_D, R_pred_mat)$predictions[,"1"],
-    S_e = predict(model_S_e, R_pred_mat)$predictions[,"1"],
-    S_o = predict(model_S_o, R_pred_mat)$predictions[,"1"]
+    Y = stats::predict(model_Y, R_pred_mat)$predictions[,"1"],
+    D = stats::predict(model_D, R_pred_mat)$predictions[,"1"],
+    S_e = stats::predict(model_S_e, R_pred_mat)$predictions[,"1"],
+    S_o = stats::predict(model_S_o, R_pred_mat)$predictions[,"1"]
   )
   list(theta_init = theta_init, predictions = predictions)
 }
@@ -156,10 +155,10 @@ rsv_compute <- function(observations, predictions, theta_init, eps = 1e-2) {
   if (nrow(observations) != nrow(predictions))
     stop("pred_Y, pred_D, pred_S_e, pred_S_o must have same length as Y, D, S_e, S_o")
   
-  if (class(observations$S_e) == "logical")
+  if (is.logical(observations$S_e))
     observations$S_e <- as.numeric(observations$S_e)
   
-  if (class(observations$S_o) == "logical")
+  if (is.logical(observations$S_o))
     observations$S_o <- as.numeric(observations$S_o)
   
   # Sample sizes
@@ -188,7 +187,9 @@ rsv_compute <- function(observations, predictions, theta_init, eps = 1e-2) {
     n_both = n_both,
     numerator = numerator,
     denominator = denominator,
-    theta_init = theta_init
+    theta_init = theta_init,
+    observations = observations,
+    predictions = predictions
   )
 }
 
@@ -217,10 +218,10 @@ rsv_compute <- function(observations, predictions, theta_init, eps = 1e-2) {
 #'   \describe{
 #'     \item{B}{Number of bootstrap replications (default \code{1000})}
 #'     \item{fix_seed}{If \code{TRUE}, deterministic seeding is used with `set.seed(b)` for the *b*‑th replication (default \code{FALSE})}
-#'     \item{cores}{Number of cores for bootstrap replications (default \code{1}).}
 #'     \item{clusters}{Clusters for the bootstrap. If \code{NULL}, uses individual-level bootstrap}
 #'   }
-#'
+#' @param cores Number of cores for bootstrap replications (default \code{1}).
+#' 
 #' @return A list with components:
 #' \describe{
 #'   \item{se}{Standard error of the treatment effect}
@@ -230,12 +231,13 @@ rsv_compute <- function(observations, predictions, theta_init, eps = 1e-2) {
 #' @keywords internal
 rsv_bootstrap <- function(
     observations, predictions, theta_init, eps = 1e-2, 
-    se_params = list(B = 1000, fix_seed = FALSE, cores = 1, clusters = NULL)
+    se_params = list(B = 1000, fix_seed = FALSE, clusters = NULL),
+    cores = 1
   ) {
   n <- length(observations$Y)
   B <- se_params$B
   fix_seed <- se_params$fix_seed
-  cores <- se_params$cores
+  
   if (is.null(se_params$clusters))
     clusters <- 1:n # If no clusters provided, use individual-level bootstrap
   else
@@ -269,12 +271,13 @@ rsv_bootstrap <- function(
   out <- dplyr::bind_rows(parallel::mclapply(1:B, run_one, mc.cores = cores))
   
   # Compute SE and confidence interval
-  se <- sd(out$coef, na.rm = TRUE)
-  denominator_se <- sd(out$denominator, na.rm = TRUE)
+  se <- stats::sd(out$coef, na.rm = TRUE)
+  denominator_se <- stats::sd(out$denominator, na.rm = TRUE)
 
   list(
     se = structure(se, names = "D"),
-    denominator_se = denominator_se
+    denominator_se = denominator_se,
+    clusters = clusters
   )
 }
 
@@ -303,13 +306,12 @@ get_joint <- function(x) {
   )
 }
 
-
 #' Compute marginal probability sums
 #'
 #' Computes sample means of joint probabilities. Used to calculate marginal
 #' probabilities for treatment/outcome and sample membership.
 #'
-#' @param x A data frame with columns \code{D}, \code{Y}, \code{S_e}, and \code{S_o}
+#' @param observations A data frame with columns \code{D}, \code{Y}, \code{S_e}, and \code{S_o}
 #'   containing observed or predicted values.
 #'
 #' @return A list containing mean values of:
@@ -451,8 +453,10 @@ get_sigma2 <- function(observations, predictions, theta_init, eps=1e-2) {
 #'
 #' @keywords internal
 get_theta_init <- function(observations, predictions){
+  
   predictions$S_e <- observations$S_e
   predictions$S_o <- observations$S_o
+  
   Delta <- get_Delta(observations, predictions)
   theta_init <- mean(Delta$e * Delta$o, na.rm = TRUE) / mean(Delta$o^2, na.rm = TRUE)
   return(theta_init)

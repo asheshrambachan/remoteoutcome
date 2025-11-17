@@ -34,7 +34,6 @@ rsv_fit_none(
   \item{ntree}{Number of trees}
   \item{classwt_Y}{Class weights for \code{pred_Y} model; default \code{c(10, 1)})}
   \item{seed}{User specified seed passed to each \code{ranger} function for reproducibility; default \code{NULL}}
-  \item{cores}{Number of cores used by `ranger` for parallel training; default \code{1}}
   \item{nfolds}{Number of folds for cross-fitting (default \code{5}).}
   \item{train_ratio}{Proportion for training in sample split (default \code{0.5}).}
 }}
@@ -45,7 +44,6 @@ rsv_fit_none(
 \describe{
   \item{B}{Number of bootstrap replications (default \code{1000})}
   \item{fix_seed}{If \code{TRUE}, deterministic seeding is used with `set.seed(b)` for the *b*‑th replication (default \code{FALSE})}
-  \item{cores}{Number of cores for bootstrap replications (default \code{1}).}
   \item{clusters}{Clusters for the bootstrap. If \code{NULL}, uses individual-level bootstrap}
 }}
 }

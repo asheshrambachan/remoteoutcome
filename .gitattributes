@@ -1,3 +1,4 @@
 data/data.rda filter=lfs diff=lfs merge=lfs -text
 data/data_real.rda filter=lfs diff=lfs merge=lfs -text
 data/data_synth.rda filter=lfs diff=lfs merge=lfs -text
+data/smartcard_data.rda filter=lfs diff=lfs merge=lfs -text

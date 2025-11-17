@@ -479,13 +479,16 @@ for (i in seq_along(smartcard_data)) {
 # ==============================================================================
 # 8. Save Datasets
 # ==============================================================================
+ 
+remote_vars_p1 <- smartcard_data %>% select(shrid2, starts_with("luminosity_"), paste0("satellite_", 1:1310))
+remote_vars_p2 <- smartcard_data %>% select(shrid2, paste0("satellite_", 1311:2655))
+remote_vars_p3 <- smartcard_data %>% select(shrid2, paste0("satellite_", 2656:4000))
+usethis::use_data(remote_vars_p1, overwrite = TRUE)
+usethis::use_data(remote_vars_p2, overwrite = TRUE)
+usethis::use_data(remote_vars_p3, overwrite = TRUE)
 
-# usethis::use_data(smartcard_data, overwrite = TRUE)
-save(smartcard_data, file = "data/smartcard_data.rda", compress = "xz", compression_level = 9)
-
-remote_vars_p1 <- smartcard_data %>% select(shrid2, starts_with("luminosity_"), paste0("satellite_", 1:1000))
-remote_vars_p2 <- smartcard_data %>% select(shrid2, paste0("satellite_", 1001:4000))
-save(remote_vars_p1, file = "data/remote_vars_p1.rda", compress = "xz", compression_level = 9)
-save(remote_vars_p2, file = "data/remote_vars_p2.rda", compress = "xz", compression_level = 9)
+smartcard_data <- smartcard_data %>% select(-starts_with("luminosity_"), -starts_with("satellite_"))
+usethis::use_data(smartcard_data, overwrite = TRUE)
+# save(smartcard_data, file = "data/smartcard_data.rda", compress = "xz", compression_level = 9)
 
 cat("\nData preparation complete!\n")

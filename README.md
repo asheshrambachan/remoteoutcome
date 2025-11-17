@@ -49,8 +49,16 @@ iterates across folds.
 library(dplyr)
 library(remoteoutcome)
 
-# Load sample data
-data("smartcard_data", package = "remoteoutcome")
+# Load the data
+data(smartcard_data, library="remoteoutcome")
+data(remote_vars_p1, library="remoteoutcome")
+data(remote_vars_p2, library="remoteoutcome")
+
+# Merge remote variables
+smartcard_data <- smartcard_data %>%
+  inner_join(remote_vars_p1, by="shrid2") %>%
+  inner_join(remote_vars_p2, by="shrid2")
+
 data_real <- create_data_real(smartcard_data)
 
 Y <- data_real$Ycons # binary outcome

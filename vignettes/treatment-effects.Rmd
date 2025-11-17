@@ -57,11 +57,13 @@ cores <- parallel::detectCores() - 1
 data(smartcard_data, library="remoteoutcome")
 data(remote_vars_p1, library="remoteoutcome")
 data(remote_vars_p2, library="remoteoutcome")
+data(remote_vars_p3, library="remoteoutcome")
 
 # Merge remote variables
 smartcard_data <- smartcard_data %>%
   inner_join(remote_vars_p1, by="shrid2") %>%
-  inner_join(remote_vars_p2, by="shrid2")
+  inner_join(remote_vars_p2, by="shrid2") %>%
+  inner_join(remote_vars_p3, by="shrid2")
 
 smartcard_data %>% 
   select(shrid2, clusters, `Sample (Smartcard)`, D, Ylowinc, Ymidinc, Ycons, luminosity_max.2012, luminosity_max.2013, satellite_1, satellite_2) %>%

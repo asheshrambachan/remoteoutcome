@@ -71,6 +71,66 @@
 "smartcard_data"
 
 
+#' Andhra Pradesh Smartcard Study Data with Remote Sensing Features
+#'
+#' Complete dataset from Muralidharan et al.'s smartcard study in Andhra Pradesh,
+#' India, merged with SECC socioeconomic data and VIIRS nighttime lights data. 
+#' This dataset contains all villages with treatment assignment, and outcomes.
+#'
+#' @format A data frame with 8,312 rows and 60 columns:
+#' \describe{
+#'   \item{shrid2}{SHRUG village identifier (unique)}
+#'   \item{satellite_*}{MOSAIKS satellite imagery features: 4,000-dimensional  
+#'     convolutional neural network features extracted from Planet imagery (2019)}
+#' }
+#'
+#' @source
+#' \itemize{
+#'   \item Study data: Muralidharan, K., Niehaus, P., & Sukhtankar, S. (2016).
+#'     Building State Capacity: Evidence from Biometric Smartcards in India.
+#'     \emph{American Economic Review}, 106(10), 2895-2929. 
+#'     \url{https://www.openicpsr.org/openicpsr/project/113012/version/V1/view?path=/openicpsr/113012/fcr:versions/V1/20141346_data/data/balance-for-ap-mandal-comparison.dta&type=file}
+#'   \item SHRUG location data: \url{https://dataverse.harvard.edu/api/access/datafile/10742739}
+#'   \item Socio-Economic and Caste Census (SECC) Consumption Data: \url{https://dataverse.harvard.edu/api/access/datafile/10742743}
+#'   \item Socio-Economic and Caste Census (SECC) Income Data: \url{https://dataverse.harvard.edu/api/access/datafile/10742876}
+#'   \item VIIRS: \url{https://dataverse.harvard.edu/api/access/datafile/10742856}
+#'   \item SHRUG shapefiles: Asher, S., Lunt, T., Matsuura, R., & Novosad, P. (2021).
+#'     Development research at high geographic resolution: An analysis of night-lights,
+#'     firms, and poverty in India using the SHRUG open data platform.
+#'     \emph{The World Bank Economic Review}, 35(4), 845-871.
+#'     \url{https://www.devdatalab.org/shrug_download}
+#'   \item MOSAIKS: Rolf, E., Proctor, J., Carleton, T., Bolliger, I., Shankar, V.,
+#'     Ishihara, M., Recht, B., & Hsiang, S. (2021). A generalizable and accessible
+#'     approach to machine learning with global satellite imagery.
+#'     \emph{Nature Communications}, 12, 4392.
+#'     \doi{10.1038/s41467-021-24638-z}
+#' }
+#'
+#' @examples
+#' \dontrun{
+#' # Load the data
+#' data(smartcard_data, library="remoteoutcome")
+#' data(remote_vars_p1, library="remoteoutcome")
+#' data(remote_vars_p2, library="remoteoutcome")
+#' data(remote_vars_p3, library="remoteoutcome")
+#' 
+#' smartcard_data <- smartcard_data %>%
+#'   inner_join(remote_vars_p1, by="shrid2") %>%
+#'   inner_join(remote_vars_p2, by="shrid2") %>%
+#'   inner_join(remote_vars_p3, by="shrid2")
+#'   
+#' # Summary of treatment assignment
+#' table(smartcard_data$D, useNA = "ifany")
+#'
+#' # Villages affected by spillovers
+#' table(smartcard_data$spillover_20km)
+#'
+#' # Sample distribution
+#' table(smartcard_data$`Sample (Smartcard)`)
+#' }
+"remote_vars_p3"
+
+
 #' Predicted Values and Observations for Consumption Outcome (Real Sample Split)
 #'
 #' Pre-computed predictions and observations from the RSV estimation procedure

@@ -206,7 +206,7 @@ for (i in seq_len(num_chunks)) {
   
   # Find nearest MOSAIKS coordinate
   min_idx <- apply(dist_matrix, 1, which.min)
-  min_dist_km <- dist_matrix[cbind(1:nrow(dist_matrix), min_idx)] / 1000
+  min_dist_km <- dist_matrix[cbind(seq_len(nrow(dist_matrix)), min_idx)] / 1000
   
   chunk <- chunk %>%
     mutate(

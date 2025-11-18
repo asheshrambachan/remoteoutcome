@@ -21,14 +21,24 @@ devtools::install_github("https://github.com/asheshrambachan/remoteoutcome", bui
 
 ## Vignettes
 
+The package includes two comprehensive vignettes:
+
+### 1. Treatment Effect Estimation with Remote Sensing Variables
+
 The package includes a vignette illustrating how the `remoteoutcome` package can be used
 to estimate treatment effects when outcomes are measured using remotely sensed variables (RSVs).
 In particular, it illustrates how `remoteoutcome` can be used to re-analyze the Smartcards experiment (Muralidharan et al. 2016; Muralidharan et al. 2023), following the same design reported in Section 5 of *Rambachan, Singh, and Viviano (2025). 
 
-The vignette can be accessed via:
-
 ```r
 vignette("treatment-effects", package = "remoteoutcome")
+```
+
+### 2. Constructing Remote Sensed Variables
+
+This vignette provides a step-by-step guide for constructing remote sensed variables by combining multiple data sources. This vignette is essential for users who need to generate their own remote sensing features.
+
+```r
+vignette("construct-remote-vars", package = "remoteoutcome")
 ```
 
 ## Sample Splitting Options in `remoteoutcome`

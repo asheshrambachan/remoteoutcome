@@ -48,14 +48,19 @@ NULL
 #'     outcomes visible only when S = "o" or "both"
 #' }
 #' 
-#' @seealso \code{\link{smartcard_data}} for the input dataset structure,
+#' @seealso \code{\link{smartcard_data_p1}} and \code{\link{smartcard_data_p2}} for the input dataset structure,
 #'   \code{\link{create_data_synth}} for creating synthetic sample splits
 #'
 #' @examples
 #' \dontrun{
-#' # Load complete dataset
-#' data(smartcard_data, package = "remoteoutcome")
-#'
+#' # Load the data
+#' data("smartcard_data_p1", package="remoteoutcome")
+#' data("smartcard_data_p2", package="remoteoutcome")
+#' 
+#' # Merge to create complete dataset
+#' smartcard_data <- inner_join(smartcard_data_p1, smartcard_data_p2, by="shrid2")
+#' rm(smartcard_data_p1, smartcard_data_p2)
+#' 
 #' # Create real experimental/observational split
 #' data_real <- create_data_real(smartcard_data)
 #'
@@ -152,14 +157,19 @@ create_data_real <- function(data) {
 #'     outcomes visible only when S = "o" or "both"
 #' }
 #'
-#' @seealso \code{\link{smartcard_data}} for the input dataset structure,
+#' @seealso \code{\link{smartcard_data_p1}} and \code{\link{smartcard_data_p2}} for the input dataset structure,
 #'   \code{\link{create_data_real}} for creating real experimental splits
 #'
 #' @examples
 #' \dontrun{
-#' # Load complete dataset
-#' data(smartcard_data, package = "remoteoutcome")
-#'
+#' # Load the data
+#' data("smartcard_data_p1", package="remoteoutcome")
+#' data("smartcard_data_p2", package="remoteoutcome")
+#' 
+#' # Merge to create complete dataset
+#' smartcard_data <- inner_join(smartcard_data_p1, smartcard_data_p2, by="shrid2")
+#' rm(smartcard_data_p1, smartcard_data_p2)
+#' 
 #' data_synth <- create_data_synth(smartcard_data)
 #'
 #' # Sample distribution

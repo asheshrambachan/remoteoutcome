@@ -104,12 +104,15 @@ prediction fitting.
 library(dplyr)
 library(remoteoutcome)
 
-# Example data: data_real (included in package)
-path_to_satellite_features <- "path/to/satellite_features.rds"
-satellite_features <- readRDS(path_to_satellite_features) \%>\%
-  select(-contains("lat"), -contains("lon"))
-data("data_real", package = "remoteoutcome")
-data_real <- inner_join(data_real, satellite_features, by = "shrid2")
+# Load the data
+data("smartcard_data_p1", package="remoteoutcome")
+data("smartcard_data_p2", package="remoteoutcome")
+
+# Merge to create complete dataset
+smartcard_data <- inner_join(smartcard_data_p1, smartcard_data_p2, by="shrid2")
+rm(smartcard_data_p1, smartcard_data_p2)
+
+data_real <- create_data_real(smartcard_data)
 
 Y <- data_real$Ycons # binary outcome
 D <- data_real$D # binary treatment
@@ -176,7 +179,6 @@ result <- rsv_estimate(
 print(result)
 
 # Example 5: User provides fitted predictions
-# Example data: pred_real_Ycons (included in package)
 data("pred_real_Ycons", package = "remoteoutcome")
 
 result <- rsv_estimate(

@@ -137,8 +137,6 @@ confint(result)
 \seealso{
 \itemize{
   \item \code{\link{rsv_estimate}} for using this dataset to estimate treatment effects
-  \item \code{\link{smartcard_data}} for the underlying data without predictions
-  \item \code{vignette(package = "remoteoutcome")} for examples
 }
 }
 \keyword{datasets}

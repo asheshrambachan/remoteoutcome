@@ -48,17 +48,12 @@ library(dplyr)
 library(remoteoutcome)
 
 # Load the data
-data("smartcard_data", package="remoteoutcome")
-data("remote_vars_p1", package="remoteoutcome")
-data("remote_vars_p2", package="remoteoutcome")
-force(smartcard_data)
-force(remote_vars_p1)
-force(remote_vars_p2)
+data("smartcard_data_p1", package="remoteoutcome")
+data("smartcard_data_p2", package="remoteoutcome")
 
 # Merge remote variables
-smartcard_data <- smartcard_data %>%
-  inner_join(remote_vars_p1, by="shrid2") %>%
-  inner_join(remote_vars_p2, by="shrid2")
+smartcard_data <- inner_join(smartcard_data_p1, smartcard_data_p2, by="shrid2") %>%
+rm(smartcard_data_p1, smartcard_data_p2)
 
 data_real <- create_data_real(smartcard_data)
 

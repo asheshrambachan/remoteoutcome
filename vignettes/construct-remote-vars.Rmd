@@ -56,8 +56,16 @@ Download **SHRUG shapefiles** from [devdatalab.org/shrug_download](https://www.d
 # Load SHRUG shapefiles (adjust path to your download) from devdatalab.org/shrug_download
 shrug_shapefile <- "shrug-shrid-poly-gpkg/shrid2_open.gpkg"
 
-# Load base data (included in package)
-data(smartcard_data, package = "remoteoutcome")
+# Load the data
+data("smartcard_data_p1", package="remoteoutcome")
+data("smartcard_data_p2", package="remoteoutcome")
+
+# Merge to create complete dataset
+smartcard_data <- inner_join(smartcard_data_p1, smartcard_data_p2, by="shrid2")
+rm(smartcard_data_p1, smartcard_data_p2)
+
+smartcard_data <- smartcard_data %>%
+  select(-starts_with("luminosity_"), -starts_with("satellite_"))
 
 shrid_ids <- unique(smartcard_data$shrid2)
 ```
@@ -98,7 +106,6 @@ for (i in seq_along(viirs_annual)) {
   attr(viirs_annual[[i]], "label") <- NULL
   attr(viirs_annual[[i]], "format.stata") <- NULL
 }
-
 
 viirs_annual %>% 
   select(shrid2, luminosity_min.2012, luminosity_min.2013, luminosity_max.2012, luminosity_max.2013, luminosity_num_cells.2012, luminosity_num_cells.2013) %>%
@@ -270,7 +277,8 @@ The resulting dataset contains 4,001 columns: `shrid2`, and the 4,000 satellite 
 
 ```{r combine}
 # Merge all remote sensed variables
-remote_vars <- viirs_annual %>%
+smartcard_data <- smartcard_data %>%
+  inner_join(viirs_annual, by = "shrid2") %>%
   inner_join(satellite_features, by = "shrid2")
 
 # Summary
@@ -284,10 +292,10 @@ cat(sprintf("  - MOSAIKS features: %d\n",  ncol(satellite_features %>% select(-s
 
 ```{r save}
 # Save
-remote_vars_p1 <- smartcard_data %>% select(shrid2, starts_with("luminosity_"), paste0("satellite_", 1:2000))
-remote_vars_p2 <- smartcard_data %>% select(shrid2, paste0("satellite_", 2001:4000))
-save(remote_vars_p1, file = "data/remote_vars_p1.rda", compress = "xz", compression_level = 9)
-save(remote_vars_p2, file = "data/remote_vars_p2.rda", compress = "xz", compression_level = 9)
+smartcard_data_p1 <- smartcard_data %>% select(-paste0("satellite_", 2001:4000))
+smartcard_data_p2 <- smartcard_data %>% select(shrid2, paste0("satellite_", 2001:4000))
+save(smartcard_data_p1, file = "data/smartcard_data_p1.rda", compress = "xz", compression_level = 9)
+save(smartcard_data_p2, file = "data/smartcard_data_p2.rda", compress = "xz", compression_level = 9)
 ```
 
 # References

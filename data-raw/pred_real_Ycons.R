@@ -1,30 +1,13 @@
-# ==============================================================================
-# USER CONFIGURATION - EDIT THIS PATHS
-# ==============================================================================
-
-path_to_satellite_features <- "~/Documents/remoteoutcome/data-raw/satellite_features.rds"
-
-# ==============================================================================
-# END USER CONFIGURATION
-# ==============================================================================
-
 library(dplyr)
 library(remoteoutcome)
 
-satellite_features <- readRDS(path_to_satellite_features) %>%
-  select(-contains("lat"), -contains("lon"))
+# Load the data
+data("smartcard_data_p1", package="remoteoutcome")
+data("smartcard_data_p2", package="remoteoutcome")
 
-data("smartcard_data", package="remoteoutcome")
-data("remote_vars_p1", package="remoteoutcome")
-data("remote_vars_p2", package="remoteoutcome")
-force(smartcard_data)
-force(remote_vars_p1)
-force(remote_vars_p2)
-
-# Merge remote variables
-smartcard_data <- smartcard_data %>%
-  inner_join(remote_vars_p1, by="shrid2") %>%
-  inner_join(remote_vars_p2, by="shrid2")
+# Merge to create complete dataset
+smartcard_data <- inner_join(smartcard_data_p1, smartcard_data_p2, by="shrid2")
+rm(smartcard_data_p1, smartcard_data_p2)
 
 data_real <- create_data_real(smartcard_data)
 

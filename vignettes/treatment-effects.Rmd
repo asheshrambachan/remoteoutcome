@@ -41,7 +41,7 @@ It includes:
 library(latex2exp)
 library(stringr)
 library(knitr)
-library(tibble)
+library(tibble, warn.conflicts = F)
 library(kableExtra)
 library(dplyr, warn.conflicts = F)
 library(ggplot2, warn.conflicts = F)
@@ -52,20 +52,17 @@ library(remoteoutcome)
 cores <- parallel::detectCores() - 1
 ```
 
-```{r tab-data, echo=FALSE}
+```{r, echo=FALSE}
 # Load the data
-data("smartcard_data", package="remoteoutcome")
-data("remote_vars_p1", package="remoteoutcome")
-data("remote_vars_p2", package="remoteoutcome")
-force(smartcard_data)
-force(remote_vars_p1)
-force(remote_vars_p2)
+data("smartcard_data_p1", package="remoteoutcome")
+data("smartcard_data_p2", package="remoteoutcome")
 
-# Merge remote variables
-smartcard_data <- smartcard_data %>%
-  inner_join(remote_vars_p1, by="shrid2") %>%
-  inner_join(remote_vars_p2, by="shrid2")
+# Merge to create complete dataset
+smartcard_data <- inner_join(smartcard_data_p1, smartcard_data_p2, by="shrid2")
+rm(smartcard_data_p1, smartcard_data_p2)
+```
 
+```{r tab-data, echo=FALSE}
 smartcard_data %>% 
   select(shrid2, clusters, `Sample (Smartcard)`, D, Ylowinc, Ymidinc, Ycons, luminosity_max.2012, luminosity_max.2013, satellite_1, satellite_2) %>%
   group_by(D) %>%

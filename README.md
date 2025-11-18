@@ -30,7 +30,7 @@ The package includes two comprehensive vignettes:
 
 The package includes a vignette illustrating how the `remoteoutcome` package can be used
 to estimate treatment effects when outcomes are measured using remotely sensed variables (RSVs).
-In particular, it illustrates how `remoteoutcome` can be used to re-analyze the Smartcards experiment (Muralidharan et al. 2016; Muralidharan et al. 2023), following the same design reported in Section 5 of *Rambachan, Singh, and Viviano (2025). 
+In particular, it illustrates how `remoteoutcome` can be used to re-analyze the Smartcards experiment (Muralidharan et al. 2016; Muralidharan et al. 2023), following the same design reported in Section 5 of *Rambachan, Singh, and Viviano (2025)*. 
 
 ```r
 vignette("treatment-effects", package = "remoteoutcome")

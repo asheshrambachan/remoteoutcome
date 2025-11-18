@@ -16,7 +16,10 @@ The package may be installed by using the function `install_github()` from the
 devtools package: 
 
 ```r
-devtools::install_github("https://github.com/asheshrambachan/remoteoutcome", build_vignettes = TRUE)
+devtools::install_github(
+  "https://github.com/asheshrambachan/remoteoutcome", 
+  build_vignettes = TRUE
+)
 ```
 
 ## Vignettes

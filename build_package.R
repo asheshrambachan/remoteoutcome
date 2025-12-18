@@ -28,10 +28,10 @@ for (pkg in required_pkgs) {
 library(devtools)
 library(roxygen2)
 
-# Step 1: Generate documentation from roxygen2 comments
-cat("Step 1: Generating documentation...\n")
-roxygen2::roxygenise(pkg_dir)
-cat("Documentation generated in man/\n")
+# # Step 1: Generate documentation from roxygen2 comments
+# cat("Step 1: Generating documentation...\n")
+# roxygen2::roxygenise(pkg_dir)
+# cat("Documentation generated in man/\n")
 
 # Step 2: Build manual (PDF)
 cat("\nStep 2: Building manual...\n")

@@ -12,10 +12,14 @@ This package implements the nonparametric methods developed in:
 
 ## Installation from source
 
-The package may be installed by using the function `install_github()` from the
-devtools package: 
+The package may be installed by using the function `install_github()` from the `devtools` package: 
 
 ```r
+install.packages("ranger")
+install.packages("devtools")
+
+install.packages("latex2exp")
+
 devtools::install_github(
   "https://github.com/asheshrambachan/remoteoutcome", 
   build_vignettes = TRUE
@@ -80,7 +84,7 @@ clusters <- data_real$clusters # Subdistrict-level cluster identifiers
 result <- rsv_estimate(
   Y = Y, D = D, S_e = S_e, S_o = S_o, R = R,
   method = "crossfit",
-  ml_params = list(nfold = 5, seed = 42),
+  ml_params = list(nfolds = 5, seed = 42),
   se_params = list(fix_seed = TRUE, clusters = clusters), 
   cores = 7
 )

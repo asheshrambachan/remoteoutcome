@@ -137,8 +137,11 @@ fit_predictions_rf <- function(R, Y, D, S_e, S_o, R_pred = NULL, ml_params = lis
 #'     \item{S_o}{Predicted \eqn{P(S_o = 1 \mid R)}, \eqn{\text{PRED}_{S_o}(R)}}
 #'   }
 #' @param theta_init Initial estimate of the treatment effect.
-#' @param eps Small constant for numerical stability. Default is 1e-2.
-#'
+#' @param eps Small constant for numerical stability. Default is \code{NULL}.
+#' @param eps_prob A probability taking value from 0 to 1. If \code{eps} is not provided, 
+#'   sigma2 is upper bounded by the quantile corresponding to the given 
+#'   probability. Default is 0.01.
+#'   
 #' @return A list containing:
 #'   \describe{
 #'     \item{coef}{Treatment effect estimate}
@@ -151,7 +154,7 @@ fit_predictions_rf <- function(R, Y, D, S_e, S_o, R_pred = NULL, ml_params = lis
 #'   }
 #'
 #' @keywords internal
-rsv_compute <- function(observations, predictions, theta_init, eps = 1e-2) {
+rsv_compute <- function(observations, predictions, theta_init, eps = NULL, eps_prob = 0.01) {
   if (nrow(observations) != nrow(predictions))
     stop("pred_Y, pred_D, pred_S_e, pred_S_o must have same length as Y, D, S_e, S_o")
   
@@ -167,7 +170,13 @@ rsv_compute <- function(observations, predictions, theta_init, eps = 1e-2) {
   n_both <- sum(observations$S_e == 1 & observations$S_o == 1)
 
   # Compute sigma^2 (Step 2d)
-  sigma2 <- get_sigma2(observations = observations, predictions = predictions, theta_init = theta_init, eps = eps)
+  sigma2 <- get_sigma2(
+    observations = observations, 
+    predictions = predictions, 
+    theta_init = theta_init, 
+    eps = eps,
+    eps_prob = eps_prob
+    )
 
   # Efficient weight function
   Delta <- get_Delta(observations = observations, predictions = predictions)
@@ -213,7 +222,10 @@ rsv_compute <- function(observations, predictions, theta_init, eps = 1e-2) {
 #'     \item{S_o}{Predicted \eqn{P(S_o = 1 \mid R)}, \eqn{\text{PRED}_{S_o}(R)}}
 #'   }
 #' @param theta_init Initial estimate of the treatment effect.
-#' @param eps Small constant for numerical stability of \code{sigma2} estimate (default \code{1e-2}).
+#' @param eps Small constant for numerical stability (default \code{NULL}).
+#' @param eps_prob A probability taking value from 0 to 1. If \code{eps} is not provided, 
+#'   sigma2 is upper bounded by the quantile corresponding to the given 
+#'   probability (default \code{0.01}).
 #' @param se_params List of bootstrap parameters:
 #'   \describe{
 #'     \item{B}{Number of bootstrap replications (default \code{1000})}
@@ -230,7 +242,7 @@ rsv_compute <- function(observations, predictions, theta_init, eps = 1e-2) {
 #'
 #' @keywords internal
 rsv_bootstrap <- function(
-    observations, predictions, theta_init, eps = 1e-2, 
+    observations, predictions, theta_init, eps = NULL, eps_prob = 0.01,
     se_params = list(B = 1000, fix_seed = FALSE, clusters = NULL),
     cores = 1
   ) {
@@ -263,7 +275,8 @@ rsv_bootstrap <- function(
       observations = observations_b,
       predictions = predictions_b,
       theta_init = theta_init,
-      eps = eps
+      eps = eps,
+      eps_prob = eps_prob
     )
     return(c(coef = out_b$coef, denominator = out_b$denominator))
   }
@@ -412,19 +425,25 @@ get_Delta_obs <- function(observations) {
 #'     \item{S_o}{Predicted \eqn{P(S_o = 1 \mid R)}, \eqn{\text{PRED}_{S_o}(R)}}
 #'   }
 #' @param theta_init Initial estimate of the treatment effect.
-#' @param eps Small positive constant for numerical stability (default \code{1e-2}).
+#' @param eps Small positive constant for numerical stability (default \code{NULL}).
 #'   Ensures sigma-squared is bounded away from zero.
+#' @param eps_prob A probability taking value from 0 to 1. If \code{eps} is not provided, 
+#'   sigma2 is upper bounded by the quantile corresponding to the given 
+#'   probability (default is 0.01).
 #'
 #' @return A numeric vector of sigma-squared values, one for each observation.
 #'
 #' @keywords internal
-get_sigma2 <- function(observations, predictions, theta_init, eps=1e-2) {
+get_sigma2 <- function(observations, predictions, theta_init, eps=NULL, eps_prob = 0.01) {
   j <- get_joint(predictions)
   count <- count_marginals(observations)
   sigma2 <- (j$D1Se / count$D1Se^2 + j$D0Se / count$D0Se^2) + 
     theta_init^2 * (j$Y1So / count$Y1So^2 + j$Y0So / count$Y0So^2)
   
   # Lower bound on sigma for numerical stability
+  if (is.null(eps))
+    eps <- quantile(sigma2, eps_prob)
+  
   sigma2 <- pmax(sigma2, eps) 
   
   return(sigma2)

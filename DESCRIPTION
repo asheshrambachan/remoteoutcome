@@ -1,7 +1,7 @@
 Package: remoteoutcome
 Type: Package
 Title: Program Evaluation with Remotely Sensed Variables
-Version: 1.0.0
+Version: 1.1.0
 Authors@R: c(
     person("Ashesh", "Rambachan", role = c("aut", "cre"), email = "asheshr@stanford.edu"),
     person("Rahul", "Singh", role = "aut"),

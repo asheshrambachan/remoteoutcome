@@ -27,7 +27,10 @@
 #' @param pred_S_e (Optional) Predicted \eqn{P(S_e = 1 \mid R)}, \eqn{\text{PRED}_{S_e}(R)}.
 #' @param pred_S_o (Optional) Predicted \eqn{P(S_o = 1 \mid R)}, \eqn{\text{PRED}_{S_o}(R)}.
 #' @param theta_init Initial estimate of the treatment effect on the train data.
-#' @param eps Small constant for numerical stability of \code{sigma2} estimate (default \code{1e-2}).
+#' @param eps Small constant for numerical stability of \code{sigma2} estimate (default \code{NULL}).
+#' @param eps_prob A probability taking value from 0 to 1. If \code{eps} is not provided, 
+#'   sigma2 is upper bounded by the quantile corresponding to the given 
+#'   probability (default \code{0.01}).
 #' @param method Prediction fitting method; one of \code{"split"} (default), \code{"crossfit"}, or \code{"none"}.
 #'   \code{"split"} = simple sample split; \code{"crossfit"} = K-fold cross-fitting; \code{"none"} = use all data for training/testing.
 #' @param ml_params List of parameters for random forest:
@@ -171,7 +174,7 @@ rsv_estimate <- function(
   Y = NULL, D = NULL, S_e = NULL, S_o = NULL, R = NULL,
   pred_Y = NULL, pred_D = NULL, pred_S_e = NULL, pred_S_o = NULL, 
   theta_init = NULL,
-  eps = 1e-2,
+  eps = NULL, eps_prob = 0.01,
   method = c("crossfit", "split", "none", "predictions"), ml_params = list(),
   se = TRUE, se_params = list(),
   cores = 1
@@ -215,7 +218,7 @@ rsv_estimate <- function(
     result <- rsv_from_predictions(
       Y = Y, D = D, S_e = S_e, S_o = S_o, 
       pred_Y = pred_Y, pred_D = pred_D, pred_S_e = pred_S_e, pred_S_o = pred_S_o, theta_init = theta_init,
-      eps = eps,
+      eps = eps, eps_prob = eps_prob,
       ml_params = ml_params,
       se = se, se_params = se_params
     )
@@ -229,21 +232,21 @@ rsv_estimate <- function(
     if (method == "none")
       result <- rsv_fit_none(
         R = R, Y = Y, D = D, S_e = S_e, S_o = S_o,
-        eps = eps,
+        eps = eps, eps_prob = eps_prob,
         ml_params = ml_params,
         se = se, se_params = se_params
       )
     else if (method == "split")
       result <- rsv_fit_split(
         R = R, Y = Y, D = D, S_e = S_e, S_o = S_o,
-        eps = eps,
+        eps = eps, eps_prob = eps_prob,
         ml_params = ml_params,
         se = se, se_params = se_params
       )
     else if (method == "crossfit")
       result <- rsv_fit_crossfit(
         R = R, Y = Y, D = D, S_e = S_e, S_o = S_o,
-        eps = eps,
+        eps = eps, eps_prob = eps_prob,
         ml_params = ml_params,
         se = se, se_params = se_params
       )
@@ -270,7 +273,7 @@ rsv_from_predictions <- function(
   Y, D, S_e, S_o, 
   pred_Y, pred_D, pred_S_e, pred_S_o, 
   theta_init = NULL,
-  eps = 1e-2,
+  eps = NULL, eps_prob = 0.01,
   ml_params = list(seed = NULL, train_ratio = 0.2),
   se = TRUE,
   se_params = list()
@@ -310,7 +313,7 @@ rsv_from_predictions <- function(
     observations = observations,
     predictions = predictions,
     theta_init = theta_init, 
-    eps = eps
+    eps = eps, eps_prob = eps_prob
   )
   
   # Compute standard errors if requested
@@ -319,7 +322,7 @@ rsv_from_predictions <- function(
       observations = observations,
       predictions = predictions,
       theta_init = theta_init,
-      eps = eps,
+      eps = eps, eps_prob = eps_prob,
       se_params = se_params
     )
     result <- c(result, boot_result)
@@ -336,7 +339,7 @@ rsv_from_predictions <- function(
 #' @keywords internal
 rsv_fit_none <- function(
     R, Y, D, S_e, S_o, 
-    eps = 1e-2,
+    eps = NULL, eps_prob = 0.01,
     ml_params = list(),
     se = TRUE,
     se_params = list()
@@ -359,7 +362,7 @@ rsv_fit_none <- function(
     observations = observations,
     predictions = predictions,
     theta_init = theta_init, 
-    eps = eps
+    eps = eps, eps_prob = eps_prob
   )
   
   # Compute standard errors if requested
@@ -368,7 +371,7 @@ rsv_fit_none <- function(
       observations = observations,
       predictions = predictions,
       theta_init = theta_init,
-      eps = eps,
+      eps = eps, eps_prob = eps_prob,
       se_params = se_params
     )
     result <- c(result, boot_result)
@@ -386,7 +389,7 @@ rsv_fit_none <- function(
 #' @keywords internal
 rsv_fit_split <- function(
     R, Y, D, S_e, S_o, 
-    eps = 1e-2,
+    eps = NULL, eps_prob = 0.01,
     ml_params = list(seed = NULL, train_ratio = 0.5),
     se = TRUE,
     se_params = list()
@@ -423,7 +426,7 @@ rsv_fit_split <- function(
     observations = observations,
     predictions = predictions,
     theta_init = theta_init, 
-    eps = eps
+    eps = eps, eps_prob = eps_prob
   )
   
   # Compute standard errors if requested
@@ -435,7 +438,7 @@ rsv_fit_split <- function(
       observations = observations,
       predictions = predictions,
       theta_init = theta_init,
-      eps = eps,
+      eps = eps, eps_prob = eps_prob,
       se_params = se_params
     )
     result <- c(result, boot_result)
@@ -454,7 +457,7 @@ rsv_fit_split <- function(
 #' @keywords internal
 rsv_fit_crossfit <- function(
     R, Y, D, S_e, S_o, 
-    eps = 1e-2,
+    eps = NULL, eps_prob = 0.01,
     ml_params = list(seed = NULL, nfolds = 5),
     se = FALSE,
     se_params = list()
@@ -501,7 +504,7 @@ rsv_fit_crossfit <- function(
       observations = observations_k,
       predictions = predictions_k,
       theta_init = theta_init_k, 
-      eps = eps
+      eps = eps, eps_prob = eps_prob
     )
     
     # Compute standard errors if requested
@@ -515,7 +518,7 @@ rsv_fit_crossfit <- function(
         observations = observations_k,
         predictions = predictions_k,
         theta_init = theta_init_k,
-        eps = eps,
+        eps = eps, eps_prob = eps_prob,
         se_params = se_params_k
       )
       result_k <- c(result_k, boot_result_k)

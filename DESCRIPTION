@@ -1,0 +1,38 @@
+Package: remoteoutcome
+Title: Program Evaluation with Remotely Sensed Outcomes
+Version: 0.1.0
+Authors@R: c(
+    person("Ashesh", "Rambachan", role = c("aut", "cre"),
+           email = "ashesh@mit.edu"),
+    person("Rahul", "Singh", role = "aut"),
+    person("Davide", "Viviano", role = "aut")
+  )
+Description: Implements the RSV (Remotely Sensed Variable) estimator for
+    treatment effects when outcomes are imperfectly measured by remotely
+    sensed variables such as satellite imagery or mobile phone activity.
+    Supports binary and multi-category outcomes, discrete covariates,
+    cross-fitting, and influence-function and score-bootstrap standard errors.
+    Based on Rambachan, Singh, and Viviano (2024) <arXiv:2411.10959>.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Depends:
+    R (>= 4.1.0)
+Imports:
+    dplyr (>= 1.0.0),
+    tidyr (>= 1.0.0),
+    tibble (>= 3.0.0),
+    ranger (>= 0.14.0),
+    fastglm (>= 0.0.1),
+    nnet,
+    stats
+Suggests:
+    xgboost,
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown
+Config/testthat/edition: 3
+VignetteBuilder: knitr
+URL: https://github.com/asheshrambachan/remoteoutcome
+BugReports: https://github.com/asheshrambachan/remoteoutcome/issues

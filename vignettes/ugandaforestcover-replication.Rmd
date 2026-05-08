@@ -1,0 +1,370 @@
+---
+title: "Replication: Uganda Forest Cover"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Replication: Uganda Forest Cover}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+
+run_chunks <- tryCatch({
+  base_url <- paste0(
+    "https://raw.githubusercontent.com/",
+    "asheshrambachan/rsv_replication/main/data/clean/ugandaforestcover/"
+  )
+  con <- url(paste0(base_url, "data_Ybin.csv"))
+  close(con)
+  TRUE
+}, error = function(e) FALSE, warning = function(w) FALSE)
+```
+
+## Overview
+
+This vignette replicates the Uganda forest cover simulation study from
+Rambachan, Singh, and Viviano using the **remoteoutcome** package.
+The application studies the effect of a Payment for Ecosystem Services (PES)
+programme on binary forest cover (`Y = 1` if cover exceeds the 80th percentile
+of the imagery region).
+
+The study design uses spatial proximity as the source of sample variation:
+
+- **Experimental sample** (`S_e = 1`): 1,009 plots inside the PES imagery
+  boundary — treatment `D` is observed, `Y` is also observed from satellite data.
+- **Observational sample** (`S_o = 1`): 272 plots in the 0–2 km buffer just
+  outside the boundary — `Y` is observed, `D` is not.
+- **Remote sensing variable**: `R1 = P(Y=1|X)` — the random-forest predicted
+  probability of high forest cover, where X are MOSAIKS satellite features.
+  (`R0 + R1 = 1` by construction, so only `R1` is used to avoid perfect
+  multicollinearity in the nuisance logits.)
+
+The vignette covers three analyses:
+
+1. **Stability test** — KS test comparing F(R1 | S = experimental, Y = y)
+   against F(R1 | S = observational, Y = y).
+2. **No experimental outcomes simulation** — repeated `cv.rsv()` on datasets
+   where Y is never observed in the experimental sample.
+3. **With experimental outcomes simulation** — same, but a subset of n_eo
+   experimental units also have Y observed (overlap units, `S_e = S_o = 1`).
+
+> **Note on simulation draws**: Both simulations use `B = 50` Monte Carlo
+> replications with analytical influence-function SEs (no bootstrap loop),
+> running in roughly 1 minute total. The published results use `B = 500` and
+> score bootstrap (`B_se = 100`). With `B = 50`, coverage SEs are ≈ ±0.03;
+> average SEs match the published values to within 0.001.
+> See Sections 4 and 6 for side-by-side comparisons with the published numbers.
+
+## Setup
+
+```{r libraries, eval = run_chunks}
+library(remoteoutcome)
+```
+
+The simulation DGP requires helper functions drawn from the replication
+package utilities, defined locally here.
+
+```{r helpers, eval = run_chunks}
+# KL-tilting: find p1 s.t. E_{p1}[y] = E_{p0}[y] + tau
+compute_p1_kl <- function(p0, y, tau, tol = 1e-10) {
+  mu_target <- sum(y * p0) + tau
+  support <- p0 > 0
+  p0s <- p0[support]; ys <- y[support]
+  if (abs(tau) < tol) return(p0)
+  f <- function(lam) {
+    z <- lam * ys - max(lam * ys)
+    w <- p0s * exp(z); w <- w / sum(w)
+    sum(ys * w) - mu_target
+  }
+  lam <- uniroot(f, c(-100, 100), tol = tol)$root
+  z <- lam * ys - max(lam * ys); w <- p0s * exp(z); w <- w / sum(w)
+  p1 <- numeric(length(p0)); p1[support] <- w; p1
+}
+
+# Draw Y for experimental units given treatment arm
+sample_Y_exp <- function(D, y_levels, p0, p1) {
+  K <- length(y_levels); out <- integer(length(D))
+  idx0 <- D == 0; idx1 <- D == 1
+  if (any(idx0)) out[idx0] <- sample.int(K, sum(idx0), replace = TRUE, prob = p0)
+  if (any(idx1)) out[idx1] <- sample.int(K, sum(idx1), replace = TRUE, prob = p1)
+  y_levels[out]
+}
+
+# Draw RSV rows from the empirical R|Y lookup table
+sample_R_given_Y <- function(R_given_Y, y_vals, y_levels) {
+  out <- matrix(NA_real_, length(y_vals), ncol(R_given_Y[[1]]))
+  for (k in seq_along(y_levels)) {
+    idx <- which(y_vals == y_levels[k])
+    if (!length(idx)) next
+    draw <- sample.int(nrow(R_given_Y[[k]]), length(idx), replace = TRUE)
+    out[idx, ] <- R_given_Y[[k]][draw, , drop = FALSE]
+  }
+  out
+}
+
+# Generate one dataset: no experimental outcomes (S_e and S_o non-overlapping)
+sim_noexp <- function(n_e, n_o, y_levels, p0, p1, alpha_o, R_given_Y) {
+  D_e <- rbinom(n_e, 1, 0.5)
+  Y_e <- sample_Y_exp(D_e, y_levels, p0, p1)
+  R_e <- sample_R_given_Y(R_given_Y, Y_e, y_levels)
+  Y_e <- rep(NA_real_, n_e)   # mask: Y unobserved in experimental sample
+  K   <- length(y_levels)
+  Y_o <- y_levels[sample.int(K, n_o, replace = TRUE, prob = alpha_o)]
+  R_o <- sample_R_given_Y(R_given_Y, Y_o, y_levels)
+  list(Y = c(Y_e, Y_o), D = c(D_e, rep(NA_real_, n_o)),
+       R = rbind(R_e, R_o),
+       S_e = c(rep(1L, n_e), rep(0L, n_o)),
+       S_o = c(rep(0L, n_e), rep(1L, n_o)))
+}
+
+# Generate one dataset: with n_eo overlap units (S_e = S_o = 1)
+sim_exp <- function(n_e, n_o, n_eo, y_levels, p0, p1, alpha_o, R_given_Y) {
+  D_e <- rbinom(n_e, 1, 0.5)
+  Y_e <- sample_Y_exp(D_e, y_levels, p0, p1)
+  R_e <- sample_R_given_Y(R_given_Y, Y_e, y_levels)
+  val_idx    <- sample.int(n_e, n_eo, replace = FALSE)
+  pure_idx   <- setdiff(seq_len(n_e), val_idx)
+  K          <- length(y_levels)
+  Y_o <- y_levels[sample.int(K, n_o, replace = TRUE, prob = alpha_o)]
+  R_o <- sample_R_given_Y(R_given_Y, Y_o, y_levels)
+  list(
+    Y   = c(Y_e[val_idx], rep(NA_real_, length(pure_idx)), Y_o),
+    D   = c(D_e[val_idx], D_e[pure_idx],                  rep(NA_real_, n_o)),
+    R   = rbind(R_e[val_idx, , drop=FALSE],
+                R_e[pure_idx, , drop=FALSE], R_o),
+    S_e = c(rep(1L, n_eo), rep(1L, length(pure_idx)), rep(0L, n_o)),
+    S_o = c(rep(1L, n_eo), rep(0L, length(pure_idx)), rep(1L, n_o))
+  )
+}
+
+# Summarise one tau block of simulation draws
+summarise_sims <- function(draws, tau) {
+  ci_mult <- qnorm(0.975)
+  bias <- mean(draws$tauhat - tau, na.rm = TRUE)
+  sd_e <- sd(draws$tauhat, na.rm = TRUE)
+  cov  <- mean(tau >= draws$tauhat - ci_mult * draws$se &
+               tau <= draws$tauhat + ci_mult * draws$se, na.rm = TRUE)
+  data.frame(tau             = tau,
+             normalized_bias = round(bias / sd_e, 3),
+             coverage        = round(cov, 3),
+             rmse            = round(sqrt(mean((draws$tauhat-tau)^2,na.rm=TRUE)), 4),
+             avg_se          = round(mean(draws$se, na.rm = TRUE), 4),
+             n_sims          = sum(!is.na(draws$tauhat)))
+}
+```
+
+## 1. Load data
+
+```{r load-data, eval = run_chunks}
+base_url <- paste0(
+  "https://raw.githubusercontent.com/",
+  "asheshrambachan/rsv_replication/main/data/clean/ugandaforestcover/"
+)
+dt <- read.csv(paste0(base_url, "data_Ybin.csv"))
+
+cat("Experimental (S_e=1):        ", sum(dt$S_e),      "\n")
+cat("Observational 0-2km (S_o=1): ", sum(dt$S_o_02km), "\n")
+cat("Y values:                    ", paste(sort(unique(dt$Y)), collapse=", "), "\n")
+```
+
+## 2. Stability assumption test
+
+`test_stability()` compares F(R1 | S = experimental, Y = y) against
+F(R1 | S = observational, Y = y) via a KS test for each outcome level.
+
+```{r stability, eval = run_chunks}
+R_score <- matrix(dt$R1, ncol = 1, dimnames = list(NULL, "R1"))
+stab <- test_stability(R_score, dt$Y,
+                       S_e = as.integer(dt$S_e),
+                       S_o = as.integer(dt$S_o_02km))
+print(stab)
+```
+
+Published result:
+
+| Y | KS stat | p-value | n_exp | n_obs |
+|---|--------:|--------:|------:|------:|
+| 0 |  0.0800 |  0.2039 |   805 |   229 |
+| 1 |  0.0904 |  0.8943 |   204 |    43 |
+
+Both p-values are large. Failure to reject supports stability: the R–Y
+relationship inside the imagery boundary can be transported to the 0–2 km buffer.
+
+## 3. Simulation setup
+
+Both simulations share the same calibrated DGP and model specification.
+
+```{r dgp-setup, eval = run_chunks}
+y_levels <- c(0L, 1L)
+alpha_e  <- prop.table(table(dt$Y[dt$S_e      == 1]))
+alpha_o  <- prop.table(table(dt$Y[dt$S_o_02km == 1]))
+p0       <- as.numeric(alpha_e)
+
+cat("alpha_e (Y|S_e=1):      Y=0:", round(p0[1], 4), " Y=1:", round(p0[2], 4), "\n")
+cat("alpha_o (Y|S_o_02km=1): Y=0:", round(alpha_o[1], 4), " Y=1:", round(alpha_o[2], 4), "\n")
+
+# R|Y lookup — R1 only (R0 = 1 - R1 adds no information for binary Y)
+R_mat     <- matrix(dt$R1, ncol = 1, dimnames = list(NULL, "R1"))
+R_given_Y <- lapply(y_levels, function(y) R_mat[dt$Y == y, , drop = FALSE])
+
+TAU_GRID <- c(0, 0.05, 0.10, 0.15, 0.20)
+B        <- 50L    # paper uses 500
+SEED     <- 42L
+
+models <- list(
+  Y   = list(model = "logit"),
+  D   = list(model = "logit"),
+  S_e = list(model = "logit"),
+  S_o = list(model = "logit")
+)
+```
+
+## 4. No experimental outcomes simulation
+
+Y is entirely unobserved in the experimental sample (`S_e = 1, S_o = 0`).
+
+```{r noexp-run, eval = run_chunks}
+run_noexp <- function(tau, b) {
+  set.seed(SEED + b)
+  p1  <- compute_p1_kl(p0, y_levels, tau)
+  dat <- sim_noexp(1000L, 1000L, y_levels, p0, p1, as.numeric(alpha_o), R_given_Y)
+  fit <- cv.rsv(Y=dat$Y, D=dat$D, S_e=dat$S_e, S_o=dat$S_o, R=dat$R,
+                y_levels=y_levels, yK=y_levels[1], models=models,
+                nfolds=2, seed=NULL, num.threads=1)
+  fit <- add_se(fit, method = "influence")
+  data.frame(tau=tau, tauhat=fit$coefficients, se=fit$se)
+}
+
+cat("Running no-experimental-outcomes simulation (B=50)...\n")
+noexp_results <- do.call(rbind, lapply(TAU_GRID, function(tau) {
+  cat(sprintf("  tau = %.2f\n", tau))
+  do.call(rbind, lapply(seq_len(B), run_noexp, tau=tau))
+}))
+```
+
+```{r noexp-summary, eval = run_chunks}
+noexp_tbl <- do.call(rbind, lapply(TAU_GRID, function(tv)
+  summarise_sims(noexp_results[noexp_results$tau == tv, ], tv)))
+print(noexp_tbl)
+```
+
+## 5. No experimental outcomes: comparison to published results
+
+```{r noexp-comparison, echo = FALSE, eval = TRUE}
+pub_noexp <- data.frame(
+  tau             = c(0.00, 0.05, 0.10, 0.15, 0.20),
+  normalized_bias = c( 0.017,  0.024,  0.063,  0.000,  0.042),
+  coverage        = c( 0.940,  0.950,  0.946,  0.950,  0.940),
+  rmse            = c(0.0316, 0.0348, 0.0352, 0.0362, 0.0377),
+  avg_se          = c(0.0318, 0.0330, 0.0341, 0.0354, 0.0363)
+)
+knitr::kable(
+  pub_noexp,
+  digits    = c(2, 3, 3, 4, 4),
+  col.names = c("τ", "Norm. bias", "Coverage", "RMSE", "Avg SE"),
+  caption   = paste("Published RSV results (no experimental outcomes):",
+                    "n_e = 1,000, n_o = 1,000, 0–2 km, B = 500, B_se = 100.")
+)
+```
+
+Near-zero normalized bias and ~94–95% coverage across all τ values confirm
+that `cv.rsv()` is well-calibrated under this DGP.
+
+## 6. With experimental outcomes simulation
+
+A subset of `n_eo = 100` experimental units are also in the observational
+sample (`S_e = S_o = 1`), so their outcomes are observed. This mirrors the
+overlap design used throughout the package (see `?sim_rsv_data`).
+
+```{r exp-run, eval = run_chunks}
+N_EO <- 100L
+
+run_exp <- function(tau, b) {
+  set.seed(SEED + b)
+  p1  <- compute_p1_kl(p0, y_levels, tau)
+  dat <- sim_exp(1000L, 1000L, N_EO, y_levels, p0, p1, as.numeric(alpha_o), R_given_Y)
+  fit <- cv.rsv(Y=dat$Y, D=dat$D, S_e=dat$S_e, S_o=dat$S_o, R=dat$R,
+                y_levels=y_levels, yK=y_levels[1], models=models,
+                nfolds=2, seed=NULL, num.threads=1)
+  fit <- add_se(fit, method = "influence")
+  data.frame(tau=tau, tauhat=fit$coefficients, se=fit$se)
+}
+
+cat("Running with-experimental-outcomes simulation (n_eo=100, B=50)...\n")
+exp_results <- do.call(rbind, lapply(TAU_GRID, function(tau) {
+  cat(sprintf("  tau = %.2f\n", tau))
+  do.call(rbind, lapply(seq_len(B), run_exp, tau=tau))
+}))
+```
+
+```{r exp-summary, eval = run_chunks}
+exp_tbl <- do.call(rbind, lapply(TAU_GRID, function(tv)
+  summarise_sims(exp_results[exp_results$tau == tv, ], tv)))
+print(exp_tbl)
+```
+
+## 7. With experimental outcomes: comparison to published results
+
+```{r exp-comparison, echo = FALSE, eval = TRUE}
+pub_exp <- data.frame(
+  tau             = c(0.00, 0.05, 0.10, 0.15, 0.20),
+  normalized_bias = c( 0.017,  0.016,  0.060, -0.012,  0.020),
+  coverage        = c( 0.932,  0.942,  0.928,  0.946,  0.938),
+  rmse            = c(0.0317, 0.0345, 0.0350, 0.0361, 0.0370),
+  avg_se          = c(0.0314, 0.0327, 0.0337, 0.0347, 0.0357)
+)
+knitr::kable(
+  pub_exp,
+  digits    = c(2, 3, 3, 4, 4),
+  col.names = c("τ", "Norm. bias", "Coverage", "RMSE", "Avg SE"),
+  caption   = paste("Published RSV results (with experimental outcomes):",
+                    "n_e = 1,000, n_eo = 100, n_o = 1,000, 0–2 km, B = 500, B_se = 100.")
+)
+```
+
+Results are similar to the no-experimental-outcomes case. Adding overlap units
+(`n_eo = 100`) slightly reduces RMSE and average SE, consistent with the
+efficiency gain from observing outcomes for some experimental units.
+
+## 8. Reproducing the published results
+
+To exactly match the published results, use `B = 500`, `score_bootstrap` with
+`B_se = 100`, and parallel cores:
+
+```{r full-replication, eval = FALSE}
+n_cores <- min(100L, parallel::detectCores() - 1L)
+
+run_full <- function(sim_fn, tau, b, ...) {
+  set.seed(SEED + b)
+  p1  <- compute_p1_kl(p0, y_levels, tau)
+  dat <- sim_fn(p1 = p1, ...)
+  fit <- cv.rsv(Y=dat$Y, D=dat$D, S_e=dat$S_e, S_o=dat$S_o, R=dat$R,
+                y_levels=y_levels, yK=y_levels[1], models=models,
+                nfolds=2, seed=NULL, num.threads=1)
+  fit <- add_se(fit, method="score_bootstrap", B=100L, seed=NULL, num.threads=1)
+  data.frame(tau=tau, tauhat=fit$coefficients, se=fit$se)
+}
+
+# No experimental outcomes (B=500)
+noexp_full <- do.call(rbind, parallel::mclapply(
+  seq_len(500L),
+  function(b) do.call(rbind, lapply(TAU_GRID, run_full,
+    sim_fn = function(p1, ...) sim_noexp(1000L, 1000L, y_levels, p0, p1,
+                                         as.numeric(alpha_o), R_given_Y),
+    b = b)),
+  mc.cores = n_cores
+))
+
+# With experimental outcomes (B=500, n_eo=100)
+exp_full <- do.call(rbind, parallel::mclapply(
+  seq_len(500L),
+  function(b) do.call(rbind, lapply(TAU_GRID, run_full,
+    sim_fn = function(p1, ...) sim_exp(1000L, 1000L, 100L, y_levels, p0, p1,
+                                       as.numeric(alpha_o), R_given_Y),
+    b = b)),
+  mc.cores = n_cores
+))
+```
+
+Each full run takes approximately 30–60 minutes with 100 cores.

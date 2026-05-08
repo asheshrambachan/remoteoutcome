@@ -1,0 +1,195 @@
+---
+title: "Getting Started with remoteoutcome"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting Started with remoteoutcome}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment  = "#>"
+)
+```
+
+## Overview
+
+**remoteoutcome** estimates average treatment effects (ATEs) when the outcome
+is observed only in an observational sample but not in the experimental sample.
+The key idea is to use *remotely sensed variables* (RSVs) — covariates observed
+in both samples that are informative about the outcome — to bridge the two
+samples.
+
+This vignette walks through the full workflow on a simulated binary-outcome
+dataset:
+
+1. Simulate data with `sim_rsv_data()`
+2. Estimate the ATE with `cv.rsv()` (cross-fitting)
+3. Add standard errors with `add_se()`
+4. Inspect the fit: coefficients, relevance, and the J-test
+
+## Setup
+
+```{r}
+library(remoteoutcome)
+```
+
+## 1. Data structure
+
+The package expects a stacked dataset containing both the experimental and
+observational samples.  Each row is a unit; the two samples are distinguished
+by indicator columns `S_e` (experimental) and `S_o` (observational).
+
+| Column | Pure experimental (`S_e=1, S_o=0`) | Overlap (`S_e=1, S_o=1`) | Pure observational (`S_e=0, S_o=1`) |
+|--------|:----------------------------------:|:------------------------:|:-----------------------------------:|
+| `Y`    | **NA**                             | observed                 | observed                            |
+| `D`    | observed (0/1)                     | observed (0/1)           | **NA**                              |
+| `R`    | observed                           | observed                 | observed                            |
+
+`sim_rsv_data()` generates data from this design.  The true ATE is controlled
+by `tau` (default 0.10).  Overlap units (`S_e = 1 & S_o = 1`) are created by
+setting `n_v > 0`; they have both Y and D observed and enable direct assumption
+tests (see `vignette("assumption-testing")`).
+
+```{r}
+dat <- sim_rsv_data(n_e = 300, n_o = 700, tau = 0.10, seed = 42)
+head(dat)
+```
+
+```{r}
+# Outcome is NA for purely experimental units (S_e=1, S_o=0)
+table(S_e = dat$S_e, S_o = dat$S_o, Y_observed = !is.na(dat$Y))
+```
+
+## 2. Fitting the RSV estimator
+
+`cv.rsv()` uses K-fold cross-fitting: models are fit on held-out folds to avoid
+overfitting the predictions used in the moment conditions.
+
+The `models` argument specifies the learner for each nuisance component.
+`"logit"` (logistic regression) is fast and works well for small-to-medium
+samples.  For larger datasets or complex relationships, use
+`list(model = "rf", num.trees = 500)` to fit a random forest.
+
+```{r}
+R <- as.matrix(dat[, paste0("R", 1:5)])
+
+fit <- cv.rsv(
+  Y   = dat$Y,
+  D   = dat$D,
+  S_e = dat$S_e,
+  S_o = dat$S_o,
+  R   = R,
+  models = list(
+    Y   = list(model = "logit"),
+    D   = list(model = "logit"),
+    S_e = list(model = "logit"),
+    S_o = list(model = "logit")
+  ),
+  nfolds = 5,
+  seed   = 42
+)
+
+print(fit)
+```
+
+The `coefficients` field contains the estimated ATE.  The true value is 0.10;
+the RSV estimate should be close.
+
+```{r}
+fit$coefficients
+```
+
+## 3. Adding standard errors
+
+Standard errors are computed via the influence-function approach by default,
+which is fast and suitable for most use cases.
+
+```{r}
+fit <- add_se(fit, method = "influence", B = 500, seed = 42)
+summary(fit)
+```
+
+`score_bootstrap` re-draws influence scores rather than refitting the full
+model, giving a quick bootstrap approximation:
+
+```{r eval = FALSE}
+fit <- add_se(fit, method = "score_bootstrap", B = 1000, seed = 42)
+```
+
+For fully non-parametric uncertainty estimates, `method = "bootstrap"` refits
+`cv.rsv()` on each bootstrap sample (slow but most general):
+
+```{r eval = FALSE}
+fit <- add_se(fit, method = "bootstrap", B = 200, seed = 42)
+```
+
+## 4. Relevance
+
+*Relevance* measures how strongly the RSVs predict treatment-induced variation
+in the outcome.  Higher relevance indicates more informative RSVs and tighter
+estimates.
+
+```{r}
+relevance(fit)
+```
+
+The table shows the RSV estimator alongside the naive estimator (which ignores
+the experimental sample structure).  The RSV relevance is typically higher
+when the nuisance models are well-specified.
+
+## 5. J-test
+
+The J-test checks whether the efficient (RSV) and naive moment conditions
+agree on the same treatment effect — an indirect test of the identifying
+assumptions (stability and no direct effect).
+
+```{r}
+jtest(fit)
+```
+
+A large p-value means the two moment conditions are consistent, which
+supports the assumptions.  A small p-value suggests misspecification in the
+nuisance models or a violation of an assumption.
+
+## 6. Clustered data
+
+When observations are grouped (e.g., villages, schools), pass cluster IDs to
+`cv.rsv()` so the train/test split respects cluster boundaries, and to
+`add_se()` for cluster-robust standard errors:
+
+```{r eval = FALSE}
+cluster_id <- rep(1:100, each = 10)  # 100 clusters of 10
+
+fit_cl <- cv.rsv(
+  Y = dat$Y, D = dat$D, S_e = dat$S_e, S_o = dat$S_o, R = R,
+  models  = list(
+    Y   = list(model = "logit"),
+    D   = list(model = "logit"),
+    S_e = list(model = "logit"),
+    S_o = list(model = "logit")
+  ),
+  clusters = cluster_id,
+  nfolds   = 5,
+  seed     = 42
+)
+
+fit_cl <- add_se(fit_cl, method = "bootstrap", B = 200,
+                 clusters = cluster_id, seed = 42)
+```
+
+## Summary
+
+| Function        | Purpose                                              |
+|-----------------|------------------------------------------------------|
+| `sim_rsv_data()`| Simulate experimental + observational data           |
+| `cv.rsv()`      | Estimate ATE via cross-fitted RSV estimator          |
+| `rsv_split()`   | Estimate ATE via single train/test split             |
+| `add_se()`      | Attach standard errors to a fitted object            |
+| `relevance()`   | Extract RSV and naive relevance estimates            |
+| `jtest()`       | J-test for overidentifying restrictions              |
+
+See `vignette("assumption-testing")` for how to test the stability and
+no-direct-effect assumptions when the data allow it.

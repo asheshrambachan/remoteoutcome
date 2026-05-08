@@ -1,0 +1,13 @@
+^\.Rproj\.user$
+^.*\.Rproj$
+^data/raw$
+^data/clean$
+^data/interim$
+^code$
+^figures$
+^tables$
+^environment\.yml$
+^cran-comments\.md$
+^data-raw$
+^README\.Rmd$
+^note_k5_results\.tex$

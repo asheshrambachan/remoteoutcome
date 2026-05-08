@@ -1,0 +1,265 @@
+---
+title: "Replication: Crop Burning in India"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Replication: Crop Burning in India}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+
+# All computation chunks are skipped if the data cannot be fetched.
+# This keeps the vignette CRAN-safe when internet is unavailable.
+run_chunks <- tryCatch({
+  base_url <- paste0(
+    "https://raw.githubusercontent.com/",
+    "asheshrambachan/rsv_replication/main/data/clean/cropburn/"
+  )
+  con <- url(paste0(base_url, "data_obs.csv"))
+  close(con)
+  TRUE
+}, error   = function(e) FALSE,
+   warning = function(w) FALSE)
+```
+
+## Overview
+
+This vignette replicates the empirical results from Rambachan, Singh, and
+Viviano using the **remoteoutcome** package. The application studies the effect
+of a crop-burning restriction in India, where:
+
+- **Treatment** `D`: assignment to a fire-restriction zone (0/1).
+- **Outcome** `Y`: whether a plot was observed burning in a survey (0/1).
+  Observed only in an observational sample of spot-check plots.
+- **Remote sensing variable** `R_prob`: a continuous RS-based prediction of
+  burning probability, observed for all plots in both samples.
+- **Clusters**: villages (`village_id`).
+
+Two samples are available:
+
+| Sample | Description |
+|--------|-------------|
+| Observational (`data_obs`) | Non-overlapping S_e and S_o: experimental plots have D but not Y; observational plots have Y but not D. |
+| Validation (`data_val`) | All plots have D; 444 spot-check plots also have Y (`S_e = 1, S_o = 1`), enabling comparison to a ground-truth ATE. |
+
+The cleaned data are publicly available at
+`https://github.com/asheshrambachan/rsv_replication/tree/main/data/clean/cropburn`.
+
+> **Note on bootstrap draws**: The code below uses `B = 100` so the vignette
+> runs quickly. The published results use `B = 5,000` (clustered score
+> bootstrap, seed 42). With B = 5,000 the estimates are stable to four decimal
+> places; with B = 100 expect small Monte Carlo variation of roughly ±0.01 in
+> the standard errors.
+
+## Setup
+
+```{r libraries, eval = run_chunks}
+library(remoteoutcome)
+```
+
+## 1. Load data
+
+```{r load-data, eval = run_chunks}
+base_url <- paste0(
+  "https://raw.githubusercontent.com/",
+  "asheshrambachan/rsv_replication/main/data/clean/cropburn/"
+)
+
+data_obs <- read.csv(paste0(base_url, "data_obs.csv"))
+data_val <- read.csv(paste0(base_url, "data_val.csv"))
+```
+
+`S_e` and `S_o` are derived from the missingness pattern of `D` and `Y`:
+a plot is in the experimental sample if `D` is observed, and in the
+observational sample if `Y` is observed.
+
+```{r sample-indicators, eval = run_chunks}
+# Observational sample: non-overlapping (S = "e" or "o")
+S_e_obs <- !is.na(data_obs$D) & !is.na(data_obs$R_prob)
+S_o_obs <- !is.na(data_obs$Y) & !is.na(data_obs$R_prob)
+
+# Validation sample: spot-check plots have S = "e,o" (S_e = 1 and S_o = 1)
+S_e_val <- !is.na(data_val$D) & !is.na(data_val$R_prob)
+S_o_val <- !is.na(data_val$Y) & !is.na(data_val$R_prob)
+
+table(S_e = S_e_obs, S_o = S_o_obs)   # non-overlapping
+table(S_e = S_e_val, S_o = S_o_val)   # 444 overlap units
+```
+
+## 2. RSV estimator — observational sample
+
+`cv.rsv()` uses 2-fold cross-fitting with logistic regression for all four
+nuisance models. Standard errors use the score bootstrap, clustered at the
+village level.
+
+```{r rsv-obs, eval = run_chunks}
+models <- list(
+  Y   = list(model = "logit"),
+  D   = list(model = "logit"),
+  S_e = list(model = "logit"),
+  S_o = list(model = "logit")
+)
+
+fit_obs <- cv.rsv(
+  Y        = data_obs$Y,
+  D        = data_obs$D,
+  S_e      = S_e_obs,
+  S_o      = S_o_obs,
+  R        = data_obs$R_prob,
+  y_levels = c(0L, 1L),
+  models   = models,
+  nfolds   = 2,
+  clusters = data_obs$village_id,
+  seed     = 42L
+)
+
+fit_obs <- add_se(
+  fit_obs,
+  method      = "score_bootstrap",
+  B           = 100,
+  clusters    = data_obs$village_id,
+  seed        = 42L
+)
+
+summary(fit_obs)
+```
+
+Published results (B = 5,000): RSV = **0.1417** (SE: 0.0782),
+Naive = **0.1929** (SE: 0.0989).
+
+## 3. RSV estimator — validation sample
+
+The validation sample has 444 spot-check plots with `S_e = 1` and `S_o = 1`.
+These overlap units enable direct assumption tests
+(see Section 7 and `vignette("assumption-testing")`).
+
+```{r rsv-val, eval = run_chunks}
+fit_val <- cv.rsv(
+  Y        = data_val$Y,
+  D        = data_val$D,
+  S_e      = S_e_val,
+  S_o      = S_o_val,
+  R        = data_val$R_prob,
+  y_levels = c(0L, 1L),
+  models   = models,
+  nfolds   = 2,
+  clusters = data_val$village_id,
+  seed     = 42L
+)
+
+fit_val <- add_se(
+  fit_val,
+  method      = "score_bootstrap",
+  B           = 100,
+  clusters    = data_val$village_id,
+  seed        = 42L
+)
+
+summary(fit_val)
+```
+
+Published results (B = 5,000): RSV = **0.1210** (SE: 0.0684),
+Naive = **0.1565** (SE: 0.0803).
+
+## 4. J-test for overidentifying restrictions
+
+The J-test checks whether the efficient (RSV) and naive moment conditions
+agree — an indirect test of the stability and no-direct-effect assumptions.
+
+```{r jtest, eval = run_chunks}
+jtest(fit_obs)
+jtest(fit_val)
+```
+
+Published results: J = 1.744 (p = 0.187) for the observational sample;
+J = 1.324 (p = 0.250) for the validation sample. Neither rejects the null;
+the two moment conditions are mutually consistent.
+
+## 5. Relevance
+
+Relevance measures how informative `R_prob` is for identifying
+treatment-induced variation in `Y`.
+
+```{r relevance, eval = run_chunks}
+relevance(fit_obs, level = 0.90)
+relevance(fit_val, level = 0.90)
+```
+
+Published results (90% CI):
+observational — 0.2622 (SE: 0.0480, CI: [0.1833, 0.3411]);
+validation — 0.3157 (SE: 0.0533, CI: [0.2280, 0.4035]).
+
+Relevance is substantially positive in both samples, confirming that
+`R_prob` carries useful information about `Y`.
+
+## 6. Summary table
+
+The table below replicates Table 2 from the paper, comparing the RSV and
+naive estimates across samples.
+
+```{r summary-table, echo = FALSE, eval = TRUE}
+res <- data.frame(
+  Estimator = c(
+    "RSV (optimal representation)", "",
+    "Naive (simple representation)", "",
+    "J statistic",
+    "p-value"
+  ),
+  Validation = c(
+    "0.1210", "(0.0684)",
+    "0.1565", "(0.0803)",
+    "1.3242", "0.2498"
+  ),
+  Observational = c(
+    "0.1417", "(0.0782)",
+    "0.1929", "(0.0989)",
+    "1.7439", "0.1866"
+  )
+)
+knitr::kable(
+  res,
+  align    = c("l", "r", "r"),
+  col.names = c("", "Validation", "Observational"),
+  caption  = "Treatment effect estimates (standard errors in parentheses). Published results, B = 5,000."
+)
+```
+
+## 7. Assumption tests (validation sample only)
+
+The validation sample has overlap units (`S_e = 1, S_o = 1`), so we can
+directly test the identifying assumptions. These tests are not possible for
+the observational sample because `Y` is never observed for experimental units
+there.
+
+```{r assumption-tests, eval = run_chunks}
+R_mat <- matrix(data_val$R_prob)
+
+# Stability: F(R | S=e, Y=y) = F(R | S=o, Y=y)
+test_stability(R_mat, data_val$Y, S_e_val, S_o_val)
+
+# No direct effect: F(R | S=e, D=0, Y=y) = F(R | S=e, D=1, Y=y)
+test_no_direct_effect(R_mat, data_val$Y, data_val$D, S_e_val)
+```
+
+Failure to reject in both tests supports the identifying assumptions.
+
+## Reproducing the published results
+
+To exactly match the published standard errors, increase `B` to 5,000 and
+use 7 parallel threads:
+
+```{r full-replication, eval = FALSE}
+fit_obs <- add_se(
+  fit_obs,
+  method      = "score_bootstrap",
+  B           = 5000,
+  clusters    = data_obs$village_id,
+  seed        = 42L,
+  num.threads = 7
+)
+```
+
+The full replication (both samples, B = 5,000) takes approximately 10–15
+minutes on a modern laptop with 7 threads.

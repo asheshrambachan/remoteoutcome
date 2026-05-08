@@ -1,0 +1,23 @@
+# Data directories — only the package .rda file belongs in the repo
+data/raw/
+data/interim/
+data/clean/
+
+# Replication outputs and environment (not part of the R package)
+tables/
+figures/
+code/
+environment.yml
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store

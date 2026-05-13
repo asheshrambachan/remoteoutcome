@@ -173,10 +173,13 @@ add_se.cv.rsv <- function(object, method = c("influence", "bootstrap", "score_bo
       sigma2.quantile = sigma2.quantile
     )
 
-    object$se        <- result$se
-    object$vcov      <- result$vcov
-    object$influence <- result$influence
-    object$cond_J    <- result$influence$cond_J
+    object$se                 <- result$se
+    object$vcov               <- result$vcov
+    object$influence          <- result$influence
+    object$cond_J             <- result$influence$cond_J
+    object$se_naive           <- result$se_naive
+    object$relevance_se       <- result$relevance_se
+    object$relevance_naive_se <- result$relevance_naive_se
 
   } else if (method == "score_bootstrap") {
     # --- Score bootstrap (fast: resample predictions, no model refitting) ---
@@ -683,7 +686,7 @@ add_se.cv.rsv <- function(object, method = c("influence", "bootstrap", "score_bo
 #' @param sigma2.lower Lower bound for sigma2
 #' @param sigma2.quantile Quantile for sigma2 lower bound
 #'
-#' @return List with coef, se, vcov, and influence function values
+#' @return List with coef, se, se_naive, relevance_se, relevance_naive_se, vcov, influence
 #'
 #' @keywords internal
 .influence_cv_rsv <- function(Y, D, S_e, S_o,
@@ -699,8 +702,9 @@ add_se.cv.rsv <- function(object, method = c("influence", "bootstrap", "score_bo
   lambda    <- as.numeric(yj_levels) - as.numeric(yK)   # M-vector: yj - yK
 
   # -----------------------------------------------------------------------
-  # 1) Build pooled df and compute cross-fitted efficient weights H (n x M)
-  #    H[i, j] = delta_o_pred[i,j] / sigma2[i]
+  # 1) Build pooled df, compute RSV weights H and naive weights H_naive
+  #    H[i,j]       = delta_o_pred[i,j] / sigma2[i]
+  #    H_naive[i,j] = pred_Y_j[i]
   # -----------------------------------------------------------------------
   df_pooled <- cbind(
     data.frame(Y = Y, D = D, S_e = S_e, S_o = S_o),
@@ -717,6 +721,13 @@ add_se.cv.rsv <- function(object, method = c("influence", "bootstrap", "score_bo
               sigma2.quantile = sigma2.quantile)
   )  # n x M
 
+  H_naive_mat <- as.matrix(
+    compute_H(df_pooled, theta_init, y_levels = y_levels,
+              sigma2.lower = sigma2.lower,
+              sigma2.quantile = sigma2.quantile,
+              pred_y_only = TRUE)
+  )  # n x M
+
   # -----------------------------------------------------------------------
   # 2) Observed indicator variables  (NA & FALSE = FALSE, so NA-safe)
   # -----------------------------------------------------------------------
@@ -727,73 +738,120 @@ add_se.cv.rsv <- function(object, method = c("influence", "bootstrap", "score_bo
   ind_YK_So <- as.numeric(Y == yK & S_o == 1)  # 1{Y=yK, S=o}
 
   # -----------------------------------------------------------------------
-  # 3) Per-cell influence: compute psi_theta_i(x) = A(x) phi_i(x)
+  # 3) Per-cell influence for RSV and naive (tau and relevance)
   #
-  #    Following the tex: first assemble phi_i(x) (raw score including all
-  #    delta-method corrections for estimated proportions), then apply
-  #    A(x) = J(x)^{-1} once.
-  #
-  #    phi_i(x) = H_i r_i
-  #             - (D1Se_i - p_e1) v_e1      [dG/dp_e1 = -v_e1]
-  #             + (D0Se_i - p_e0) v_e0      [dG/dp_e0 = +v_e0]
-  #             + sum_j theta_j (Yj_i-p_oj) v_oj   [dG/dp_oj = +theta_j v_oj]
-  #             - sum(theta) (YK_i - p_oK) v_oK     [dG/dp_oK = -sum(theta) v_oK]
-  #    where v_k = E_{n,x}[H . ind_k] / p_k^2
-  #
+  #    phi_i(x) = H_i r_i + delta-method corrections for p_e1, p_e0, p_oj, p_oK
   #    psi_theta_i(x) = J(x)^{-1} phi_i(x)
-  #    stored row-wise (n_x x M): row i = (J^{-1} phi_i)^T
+  #
+  #    For relevance rho = 1/(lambda' J^{-1} lambda), g = J^{-1} lambda:
+  #    psi_rho_i(x) = rho^2 (H_i' g)(delta_o_i' g) - rho
+  #                 + sum_j [-rho^2 g_j (v_oj_j' g)] (Yj_So_i - p_oj)
+  #                 + rho^2 sum(g) (g' v_oK) (YK_So_i - p_oK)
+  #
+  #    Naive quantities: same formulas with H_naive replacing H.
   # -----------------------------------------------------------------------
   cell_influence <- function(idx) {
-    n_x    <- length(idx)
-    H_x    <- H_mat[idx, , drop = FALSE]        # n_x x M
-    D1Se_x <- ind_D1Se[idx]
-    D0Se_x <- ind_D0Se[idx]
-    Yj_x   <- ind_Yj_So[idx, , drop = FALSE]    # n_x x M
-    YK_x   <- ind_YK_So[idx]
+    n_x      <- length(idx)
+    H_x      <- H_mat[idx, , drop = FALSE]        # n_x x M (RSV)
+    H_nv_x   <- H_naive_mat[idx, , drop = FALSE]  # n_x x M (naive)
+    D1Se_x   <- ind_D1Se[idx]
+    D0Se_x   <- ind_D0Se[idx]
+    Yj_x     <- ind_Yj_So[idx, , drop = FALSE]    # n_x x M
+    YK_x     <- ind_YK_So[idx]
 
-    # Cell-specific proportions: E_{n,x}[indicator]
     p_e1 <- mean(D1Se_x)
     p_e0 <- mean(D0Se_x)
-    p_oj <- colMeans(Yj_x)   # M-vector
+    p_oj <- colMeans(Yj_x)
     p_oK <- mean(YK_x)
 
-    # Observed delta contrasts (tex: Delta_e, Delta_o)
-    delta_e <- D1Se_x / p_e1 - D0Se_x / p_e0                     # n_x
+    delta_e <- D1Se_x / p_e1 - D0Se_x / p_e0
     delta_o <- sweep(Yj_x, 2, p_oj, "/") - YK_x * (1 / p_oK)    # n_x x M
 
-    # J(x) = (1/n_x) H' Delta_o,   a(x) = (1/n_x) H' Delta_e   (tex: A(x)^{-1}, a)
-    J_x     <- crossprod(H_x, delta_o) / n_x   # M x M
-    a_x     <- drop(crossprod(H_x, delta_e)) / n_x  # M
+    # ---- RSV: J, theta, phi, psi_theta, psi_rho ----
+    J_x     <- crossprod(H_x, delta_o) / n_x
+    a_x     <- drop(crossprod(H_x, delta_e)) / n_x
     kappa_J <- if (all(is.finite(J_x))) kappa(J_x, exact = TRUE) else NA_real_
     J_x_inv <- solve(J_x)
-    theta_x <- drop(J_x_inv %*% a_x)           # theta(x) = J(x)^{-1} a(x)
+    theta_x <- drop(J_x_inv %*% a_x)
+    r_x     <- delta_e - drop(delta_o %*% theta_x)
 
-    # Residuals: r_i = Delta_e_i - Delta_o_i' theta(x)
-    r_x <- delta_e - drop(delta_o %*% theta_x)
+    g_rsv   <- drop(J_x_inv %*% lambda)
+    rho_lq  <- drop(t(lambda) %*% J_x_inv %*% lambda)
+    rho_rsv <- if (is.finite(rho_lq) && rho_lq != 0) 1 / rho_lq else NA_real_
 
-    # v vectors: gradient components v_k = E_{n,x}[H . ind_k] / p_k^2
-    v_e1 <- colMeans(H_x * D1Se_x) / p_e1^2   # M
-    v_e0 <- colMeans(H_x * D0Se_x) / p_e0^2   # M
-    v_oK <- colMeans(H_x * YK_x)   / p_oK^2   # M
+    v_e1 <- colMeans(H_x * D1Se_x) / p_e1^2
+    v_e0 <- colMeans(H_x * D0Se_x) / p_e0^2
+    v_oK <- colMeans(H_x * YK_x)   / p_oK^2
 
-    # phi_i(x): raw score before applying A(x) = J(x)^{-1}
-    phi <- H_x * r_x
-    phi <- phi - (D1Se_x - p_e1) %o% v_e1
-    phi <- phi + (D0Se_x - p_e0) %o% v_e0
+    phi     <- H_x * r_x
+    phi     <- phi - (D1Se_x - p_e1) %o% v_e1
+    phi     <- phi + (D0Se_x - p_e0) %o% v_e0
+    psi_rho <- if (!is.na(rho_rsv)) {
+      rho_rsv^2 * drop(H_x %*% g_rsv) * drop(delta_o %*% g_rsv) - rho_rsv
+    } else rep(NA_real_, n_x)
+
     for (j in seq_len(M)) {
       v_oj_j <- colMeans(H_x * Yj_x[, j]) / p_oj[j]^2
       phi    <- phi + theta_x[j] * (Yj_x[, j] - p_oj[j]) %o% v_oj_j
+      if (!is.na(rho_rsv))
+        psi_rho <- psi_rho -
+          rho_rsv^2 * drop(g_rsv %*% v_oj_j) * g_rsv[j] * (Yj_x[, j] - p_oj[j])
     }
     phi <- phi - sum(theta_x) * (YK_x - p_oK) %o% v_oK
+    if (!is.na(rho_rsv))
+      psi_rho <- psi_rho +
+        rho_rsv^2 * drop(g_rsv %*% v_oK) * sum(g_rsv) * (YK_x - p_oK)
 
-    # psi_theta_i(x) = A(x) phi_i(x) = J(x)^{-1} phi_i(x)
-    # t(J_x_inv %*% t(phi)) gives n_x x M with row i = (J^{-1} phi_i)^T
     psi_theta <- t(J_x_inv %*% t(phi))   # n_x x M
 
-    list(psi_theta = psi_theta, theta_x = theta_x,
-         J_x = J_x, J_x_inv = J_x_inv,
-         tau_x = sum(lambda * theta_x),
-         kappa_J = kappa_J)
+    # ---- Naive: J_nv, theta_nv, phi_nv, psi_theta_nv, psi_rho_nv ----
+    J_nv_x     <- crossprod(H_nv_x, delta_o) / n_x
+    a_nv_x     <- drop(crossprod(H_nv_x, delta_e)) / n_x
+    J_nv_inv   <- solve(J_nv_x)
+    theta_nv_x <- drop(J_nv_inv %*% a_nv_x)
+    r_nv_x     <- delta_e - drop(delta_o %*% theta_nv_x)
+
+    g_nv      <- drop(J_nv_inv %*% lambda)
+    rho_nv_lq <- drop(t(lambda) %*% J_nv_inv %*% lambda)
+    rho_nv    <- if (is.finite(rho_nv_lq) && rho_nv_lq != 0) 1 / rho_nv_lq else NA_real_
+
+    v_e1_nv <- colMeans(H_nv_x * D1Se_x) / p_e1^2
+    v_e0_nv <- colMeans(H_nv_x * D0Se_x) / p_e0^2
+    v_oK_nv <- colMeans(H_nv_x * YK_x)   / p_oK^2
+
+    phi_nv     <- H_nv_x * r_nv_x
+    phi_nv     <- phi_nv - (D1Se_x - p_e1) %o% v_e1_nv
+    phi_nv     <- phi_nv + (D0Se_x - p_e0) %o% v_e0_nv
+    psi_rho_nv <- if (!is.na(rho_nv)) {
+      rho_nv^2 * drop(H_nv_x %*% g_nv) * drop(delta_o %*% g_nv) - rho_nv
+    } else rep(NA_real_, n_x)
+
+    for (j in seq_len(M)) {
+      v_oj_j_nv <- colMeans(H_nv_x * Yj_x[, j]) / p_oj[j]^2
+      phi_nv    <- phi_nv + theta_nv_x[j] * (Yj_x[, j] - p_oj[j]) %o% v_oj_j_nv
+      if (!is.na(rho_nv))
+        psi_rho_nv <- psi_rho_nv -
+          rho_nv^2 * drop(g_nv %*% v_oj_j_nv) * g_nv[j] * (Yj_x[, j] - p_oj[j])
+    }
+    phi_nv <- phi_nv - sum(theta_nv_x) * (YK_x - p_oK) %o% v_oK_nv
+    if (!is.na(rho_nv))
+      psi_rho_nv <- psi_rho_nv +
+        rho_nv^2 * drop(g_nv %*% v_oK_nv) * sum(g_nv) * (YK_x - p_oK)
+
+    psi_theta_nv <- t(J_nv_inv %*% t(phi_nv))   # n_x x M
+
+    list(psi_theta   = psi_theta,
+         psi_rho     = psi_rho,
+         psi_tau_nv  = drop(psi_theta_nv %*% lambda),
+         psi_rho_nv  = psi_rho_nv,
+         theta_x     = theta_x,
+         tau_x       = sum(lambda * theta_x),
+         rho_x       = rho_rsv,
+         tau_nv_x    = sum(lambda * theta_nv_x),
+         rho_nv_x    = rho_nv,
+         J_x         = J_x,
+         J_x_inv     = J_x_inv,
+         kappa_J     = kappa_J)
   }
 
   # -----------------------------------------------------------------------
@@ -802,12 +860,14 @@ add_se.cv.rsv <- function(object, method = c("influence", "bootstrap", "score_bo
   if (length(X_cols_use) == 0) {
 
     res           <- cell_influence(seq_len(n))
-    psi_theta_mat <- res$psi_theta           # n x M
+    psi_theta_mat <- res$psi_theta
     theta_hat     <- res$theta_x
     theta0_pooled <- res$tau_x
 
-    # Scalar projection: psi_tau0_i = lambda' psi_theta_i
-    psi_tau0 <- drop(psi_theta_mat %*% lambda)
+    psi_tau0   <- drop(psi_theta_mat %*% lambda)
+    psi_rho0   <- res$psi_rho
+    psi_tau_nv <- res$psi_tau_nv
+    psi_rho_nv <- res$psi_rho_nv
 
     inf_out <- list(
       psi_tau0  = psi_tau0,
@@ -820,12 +880,15 @@ add_se.cv.rsv <- function(object, method = c("influence", "bootstrap", "score_bo
     )
 
   # -----------------------------------------------------------------------
-  # 4b) Covariate case: loop over cells x in X, per tex formula:
+  # 4b) Covariate case: loop over cells x in X
   #
-  #   hat_psi_i = [pi(x_i)/P(X=x_i)] lambda' A(x_i) phi_i(x_i)
+  #   psi_tau_i = [pi(x_i)/P(X=x_i)] lambda' J(x_i)^{-1} phi_i(x_i)
   #             + P(S=e)^{-1} 1{S_i=e} (tau(x_i) - tau_bar)
   #
-  #   tau_bar = sum_x pi(x) tau(x)  [experimental average, P(X=x|S=e) weights]
+  #   psi_rho_i = [pi(x_i)/P(X=x_i)] psi_rho_i(x_i)
+  #             + P(S=e)^{-1} 1{S_i=e} (rho(x_i) - rho_bar)
+  #
+  #   (Same structure for naive quantities.)
   # -----------------------------------------------------------------------
   } else {
 
@@ -833,10 +896,16 @@ add_se.cv.rsv <- function(object, method = c("influence", "bootstrap", "score_bo
     cell_labels  <- do.call(paste, c(X_df, sep = "\u001f"))   # unit-sep avoids collisions
     unique_cells <- unique(cell_labels)
 
-    P_Se       <- mean(S_e == 1)   # hat P(S=e)
-    psi_tau0   <- numeric(n)
-    tau_by_obs <- numeric(n)
-    cell_kappas <- numeric(length(unique_cells))
+    P_Se          <- mean(S_e == 1)
+    psi_tau0      <- numeric(n)
+    psi_rho0      <- numeric(n)
+    psi_tau_nv    <- numeric(n)
+    psi_rho_nv    <- numeric(n)
+    tau_by_obs    <- numeric(n)
+    rho_by_obs    <- numeric(n)
+    tau_nv_by_obs <- numeric(n)
+    rho_nv_by_obs <- numeric(n)
+    cell_kappas   <- numeric(length(unique_cells))
 
     for (ci in seq_along(unique_cells)) {
       cx    <- unique_cells[ci]
@@ -844,24 +913,34 @@ add_se.cv.rsv <- function(object, method = c("influence", "bootstrap", "score_bo
       n_x   <- length(idx_x)
       res   <- cell_influence(idx_x)
 
-      tau_by_obs[idx_x] <- res$tau_x
-      cell_kappas[ci]   <- res$kappa_J
+      tau_by_obs[idx_x]    <- res$tau_x
+      rho_by_obs[idx_x]    <- res$rho_x
+      tau_nv_by_obs[idx_x] <- res$tau_nv_x
+      rho_nv_by_obs[idx_x] <- res$rho_nv_x
+      cell_kappas[ci]      <- res$kappa_J
 
-      # pi(x)/P(X=x) = [count(X=x,S=e)/n / P(S=e)] / [n_x/n]
       n_xe  <- sum(S_e[idx_x] == 1)
-      pi_x  <- (n_xe / n) / P_Se    # hat pi(x) = P(X=x | S=e)
-      P_X_x <- n_x / n              # hat P(X=x)
+      pi_x  <- (n_xe / n) / P_Se
+      P_X_x <- n_x / n
       w_x   <- pi_x / P_X_x
 
-      psi_tau0[idx_x] <- psi_tau0[idx_x] + w_x * drop(res$psi_theta %*% lambda)
+      psi_tau0[idx_x]   <- psi_tau0[idx_x]   + w_x * drop(res$psi_theta %*% lambda)
+      psi_rho0[idx_x]   <- psi_rho0[idx_x]   + w_x * res$psi_rho
+      psi_tau_nv[idx_x] <- psi_tau_nv[idx_x] + w_x * res$psi_tau_nv
+      psi_rho_nv[idx_x] <- psi_rho_nv[idx_x] + w_x * res$psi_rho_nv
     }
 
-    # tau_bar = sum_x pi(x) tau(x) = experimental average ATE
-    tau_bar       <- sum(tau_by_obs[S_e == 1]) / sum(S_e == 1)
+    Se_ind        <- as.numeric(S_e == 1)
+    tau_bar       <- sum(tau_by_obs[S_e == 1])    / sum(S_e == 1)
+    rho_bar       <- sum(rho_by_obs[S_e == 1])    / sum(S_e == 1)
+    tau_nv_bar    <- sum(tau_nv_by_obs[S_e == 1]) / sum(S_e == 1)
+    rho_nv_bar    <- sum(rho_nv_by_obs[S_e == 1]) / sum(S_e == 1)
     theta0_pooled <- tau_bar
 
-    # xi term: hat_xi_i = P(S=e)^{-1} 1{S_i=e} (tau(X_i) - tau_bar)
-    psi_tau0 <- psi_tau0 + as.numeric(S_e == 1) * (tau_by_obs - tau_bar) / P_Se
+    psi_tau0   <- psi_tau0   + Se_ind * (tau_by_obs    - tau_bar)    / P_Se
+    psi_rho0   <- psi_rho0   + Se_ind * (rho_by_obs    - rho_bar)    / P_Se
+    psi_tau_nv <- psi_tau_nv + Se_ind * (tau_nv_by_obs - tau_nv_bar) / P_Se
+    psi_rho_nv <- psi_rho_nv + Se_ind * (rho_nv_by_obs - rho_nv_bar) / P_Se
 
     max_kappa_J <- if (all(is.na(cell_kappas))) NA_real_ else max(cell_kappas, na.rm = TRUE)
     inf_out <- list(
@@ -874,14 +953,19 @@ add_se.cv.rsv <- function(object, method = c("influence", "bootstrap", "score_bo
   }
 
   # -----------------------------------------------------------------------
-  # 5) V_hat = (1/n) sum psi_i^2,   SE = sqrt(V_hat / n)
+  # 5) SE = sqrt( mean(psi_i^2) / n ) for each quantity
   # -----------------------------------------------------------------------
-  V_hat  <- mean(psi_tau0^2)
-  se_val <- sqrt(V_hat / n)
+  se_val                 <- sqrt(mean(psi_tau0^2)                / n)
+  se_naive_val           <- sqrt(mean(psi_tau_nv^2)              / n)
+  relevance_se_val       <- sqrt(mean(psi_rho0^2,  na.rm = TRUE) / n)
+  relevance_naive_se_val <- sqrt(mean(psi_rho_nv^2, na.rm = TRUE) / n)
 
   list(
-    coef = structure(theta0_pooled, names = "D"),
-    se   = structure(se_val, names = "D"),
+    coef               = structure(theta0_pooled, names = "D"),
+    se                 = structure(se_val,       names = "D"),
+    se_naive           = structure(se_naive_val, names = "D"),
+    relevance_se       = relevance_se_val,
+    relevance_naive_se = relevance_naive_se_val,
     vcov = structure(
       matrix(se_val^2, 1, 1),
       dimnames = list("D", "D")

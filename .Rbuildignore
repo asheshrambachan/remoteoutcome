@@ -8,6 +8,7 @@
 ^tables$
 ^environment\.yml$
 ^cran-comments\.md$
+^LICENSE\.md$
 ^data-raw$
 ^README\.Rmd$
 ^note_k5_results\.tex$

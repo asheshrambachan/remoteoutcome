@@ -416,9 +416,10 @@ add_se.cv.rsv <- function(object, method = c("influence", "bootstrap", "score_bo
       rel_val   <- est_b$relevance_ate
 
       # kappa(J) for this resample: one J matrix per X stratum, take the max
-      kappa_J_b <- max(vapply(denom, function(J)
+      kappa_vals <- vapply(denom, function(J)
         if (is.matrix(J) && nrow(J) > 1 && all(is.finite(J))) kappa(J, exact = TRUE) else NA_real_,
-        FUN.VALUE = numeric(1)), na.rm = TRUE)
+        FUN.VALUE = numeric(1))
+      kappa_J_b <- if (any(is.finite(kappa_vals))) max(kappa_vals, na.rm = TRUE) else NA_real_
 
       # Naive estimate
       est_naive_b <- compute_estimate(

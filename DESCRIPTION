@@ -12,7 +12,7 @@ Description: Implements the RSV (Remotely Sensed Variable) estimator for
     sensed variables such as satellite imagery or mobile phone activity.
     Supports binary and multi-category outcomes, discrete covariates,
     cross-fitting, and influence-function and score-bootstrap standard errors.
-    Based on Rambachan, Singh, and Viviano (2024) <arXiv:2411.10959>.
+    Based on Rambachan, Singh, and Viviano (2024) <doi:10.48550/arXiv.2411.10959>.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

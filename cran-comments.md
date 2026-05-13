@@ -2,9 +2,7 @@
 
 0 errors | 0 warnings | 1 note
 
-* NOTE: Non-standard file found at top level: 'LICENSE.md'
-  This is intentional — LICENSE.md provides the full MIT license text
-  alongside the required LICENSE stub. Many CRAN packages include this.
+* NOTE: New submission
 
 ## Test environments
 

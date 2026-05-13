@@ -62,25 +62,12 @@ fit <- add_se(fit, method = "influence")
 summary(fit)
 ```
 
-## Main functions
-
-| Function | Description |
-|---|---|
-| `cv.rsv()` | Cross-fitted RSV estimator (main entry point) |
-| `rsv()` | Single-split RSV estimator |
-| `add_se()` | Add standard errors (`"influence"` or `"score_bootstrap"`) |
-| `jtest()` | J-test for overidentifying restrictions |
-| `relevance()` | Relevance measure with confidence interval |
-| `test_stability()` | KS test for the stability assumption |
-| `test_no_direct_effect()` | KS test for the no-direct-effect assumption |
-| `sim_rsv_data()` | Simulate data from the RSV DGP |
-
 ## Vignettes
 
 - **Getting started** — introduces the estimator, data structure, and basic workflow
-- **Testing the identifying assumptions** — `test_stability()`, `test_no_direct_effect()`, and `jtest()`
-- **Replication: Crop Burning in India** — replicates the empirical results from Jack et al. (2025)
-- **Replication: Uganda Forest Cover** — replicates the simulation study calibrated to Jayachandran et al. (2017)
+- **Replication: Smartcards in India** — replicates the empirical analysis from Rambachan, Singh, and Viviano (2025) using the Muralidharan et al. (2016) smartcards data
+- **Replication: Crop Burning in India** — replicates the empirical analysis from Rambachan, Singh, and Viviano (2025) using the Jack et al. (2025) crop burning data
+- **Replication: Uganda Forest Cover** — replicates the simulation study from Rambachan, Singh, and Viviano (2025) calibrated to Jayachandran et al. (2017)
 
 ```r
 browseVignettes("remoteoutcome")
